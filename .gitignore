@@ -1,0 +1,20 @@
+# Java build artifacts
+*.class
+*.jar
+*.war
+*.ear
+
+# Common Java build directories
+bin/
+out/
+target/
+build/
+
+# IDE/editor metadata
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
