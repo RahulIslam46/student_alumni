@@ -325,7 +325,9 @@ public class RegistrationFrame extends JFrame {
     private String getFieldText(JTextField field) {
         String placeholder = (String) field.getClientProperty("placeholder");
         String text = field.getText().trim();
-        if (placeholder != null && text.equals(placeholder)) {
+        // Treat as placeholder only while the field is still in placeholder style.
+        if (placeholder != null && text.equals(placeholder)
+            && TEXT_SECONDARY.equals(field.getForeground())) {
             return "";
         }
         return text;
@@ -412,6 +414,25 @@ public class RegistrationFrame extends JFrame {
         try {
             conn = DatabaseConnection.getConnection();
             conn.setAutoCommit(false);
+
+            // Ensure verification table exists before first registration insert.
+            try (Statement schemaStmt = conn.createStatement()) {
+                schemaStmt.execute(
+                    "CREATE TABLE IF NOT EXISTS identity_verifications ("
+                    + "verification_id INT AUTO_INCREMENT PRIMARY KEY,"
+                    + "user_id INT NOT NULL,"
+                    + "user_type VARCHAR(20) NOT NULL,"
+                    + "document_type VARCHAR(50) NOT NULL,"
+                    + "document_path VARCHAR(500) NOT NULL,"
+                    + "verification_status ENUM('pending','approved','rejected') DEFAULT 'pending',"
+                    + "reviewer_note VARCHAR(500) DEFAULT NULL,"
+                    + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                    + "verified_at TIMESTAMP NULL,"
+                    + "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,"
+                    + "INDEX idx_user_id (user_id),"
+                    + "INDEX idx_status (verification_status, created_at)"
+                    + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
 
             // Insert User with status=pending so admin must approve
             PreparedStatement userStmt = conn.prepareStatement(

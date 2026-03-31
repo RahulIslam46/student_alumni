@@ -40,6 +40,7 @@ public class ModernDashboardUI extends JFrame {
     private boolean currentUserIsAdmin = false;
     private CardLayout contentCardLayout;
     private JPanel mainContentArea;
+    private JPanel notificationsListPanel;
     private JLabel sidebarUserAvatar;
     private JButton backButton;
     private String currentView = "DASHBOARD";
@@ -230,6 +231,11 @@ public class ModernDashboardUI extends JFrame {
             topSection.add(btn);
             topSection.add(Box.createVerticalStrut(8));
         }
+
+        // AI chat shortcut for quick writing help anywhere in the app.
+        topSection.add(Box.createVerticalStrut(6));
+        JButton aiChatBtn = createAiChatButton();
+        topSection.add(aiChatBtn);
 
         // Add Admin Control button (always visible; password-protected inside)
         topSection.add(Box.createVerticalStrut(20));
@@ -462,6 +468,41 @@ public class ModernDashboardUI extends JFrame {
                         JOptionPane.ERROR_MESSAGE);
                 }
             }
+        });
+        return btn;
+    }
+
+    private JButton createAiChatButton() {
+        JButton btn = new JButton("🤖  Chat with AI") {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+                if (getModel().isPressed())
+                    g2.setColor(new Color(37, 99, 235));
+                else if (getModel().isRollover())
+                    g2.setColor(new Color(59, 130, 246));
+                else
+                    g2.setColor(new Color(59, 130, 246, 60));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        btn.setForeground(new Color(147, 197, 253));
+        btn.setHorizontalAlignment(SwingConstants.LEFT);
+        btn.setBorder(new EmptyBorder(12, 20, 12, 20));
+        btn.setMaximumSize(new Dimension(280, 45));
+        btn.setContentAreaFilled(false);
+        btn.setFocusPainted(false);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btn.addActionListener(e -> {
+            String context = "General assistant for Alumni Connect portal. "
+                + "Help with writing notices, achievements, and messages. "
+                + "Provide multiple alternatives when asked.";
+            AiChatDialog.openOrFocus(this, "Dashboard AI Chat", context, null);
         });
         return btn;
     }
@@ -1077,12 +1118,11 @@ public class ModernDashboardUI extends JFrame {
         titlePanel.add(titleLabel);
 
         headerPanel.add(titlePanel, BorderLayout.WEST);
-        // Only admin can post notices
-        if (currentUserIsAdmin) {
-            JPanel adminBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-            adminBtns.setOpaque(false);
+        JPanel actionBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        actionBtns.setOpaque(false);
 
-            // Pending donations badge
+        // Admin-only controls remain visible for admins.
+        if (currentUserIsAdmin) {
             int pendingDonations = AlumniDAO.getPendingDonationCount();
             if (pendingDonations > 0) {
                 JButton donBadge =
@@ -1092,15 +1132,19 @@ public class ModernDashboardUI extends JFrame {
                     AdminControlPanel acp = new AdminControlPanel(this);
                     acp.setVisible(true);
                 });
-                adminBtns.add(donBadge);
+                actionBtns.add(donBadge);
             }
-
-            JButton postBtn =
-                createModernButton("+ Post Notice", new Color(46, 204, 113));
-            postBtn.addActionListener(e -> showPostNotificationDialog());
-            adminBtns.add(postBtn);
-            headerPanel.add(adminBtns, BorderLayout.EAST);
         }
+
+        JButton communityPostBtn =
+            createModernButton("+ Community Post", new Color(46, 204, 113));
+        communityPostBtn.addActionListener(e -> showPostNotificationDialog());
+        actionBtns.add(communityPostBtn);
+
+        JButton refreshNoticesBtn = createModernButton("↻ Refresh", PRIMARY_BLUE);
+        refreshNoticesBtn.addActionListener(e -> refreshNotificationsView());
+        actionBtns.add(refreshNoticesBtn);
+        headerPanel.add(actionBtns, BorderLayout.EAST);
         view.add(headerPanel, BorderLayout.NORTH);
 
         // Notifications list
@@ -1109,6 +1153,7 @@ public class ModernDashboardUI extends JFrame {
             new BoxLayout(notificationsPanel, BoxLayout.Y_AXIS));
         notificationsPanel.setBackground(MAIN_BG);
         notificationsPanel.setBorder(new EmptyBorder(20, 30, 20, 30));
+        notificationsListPanel = notificationsPanel;
 
         // Load notifications
         loadNotifications(notificationsPanel);
@@ -1123,6 +1168,26 @@ public class ModernDashboardUI extends JFrame {
 
     private void loadNotifications(JPanel container) {
         container.removeAll();
+
+        JPanel infoPanel = new JPanel(new BorderLayout());
+        infoPanel.setBackground(new Color(20, 26, 42));
+        infoPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(60, 70, 110), 1, true),
+            new EmptyBorder(12, 14, 12, 14)));
+        infoPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 72));
+
+        JLabel infoLabel = new JLabel(
+            "Community Board is open for everyone: share industry updates, jobs, and alumni opportunities.");
+        infoLabel.setForeground(new Color(199, 210, 254));
+        infoLabel.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        infoPanel.add(infoLabel, BorderLayout.CENTER);
+
+        JButton quickPostBtn = createModernButton("Post Now", PRIMARY_BLUE);
+        quickPostBtn.addActionListener(e -> showPostNotificationDialog());
+        infoPanel.add(quickPostBtn, BorderLayout.EAST);
+
+        container.add(infoPanel);
+        container.add(Box.createVerticalStrut(15));
 
         List<Notification> notifications =
             AlumniDAO.getAllNotifications(currentUserId);
@@ -1142,7 +1207,7 @@ public class ModernDashboardUI extends JFrame {
             emptyLabel.setForeground(TEXT_GRAY);
             emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-            JLabel tipLabel = new JLabel("Click 'Post Notice' to create one");
+            JLabel tipLabel = new JLabel("Click 'Post Now' to create one");
             tipLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
             tipLabel.setForeground(TEXT_GRAY);
             tipLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -1167,11 +1232,13 @@ public class ModernDashboardUI extends JFrame {
 
     private JPanel createNotificationCard(Notification notif) {
         JPanel card = new JPanel(new BorderLayout(15, 15));
-        card.setBackground(notif.isViewed() ? Color.WHITE
-                                            : new Color(240, 248, 255));
+        Color cardBg = notif.isViewed() ? new Color(26, 33, 52)
+                                        : new Color(34, 45, 74);
+        Color cardBorder = notif.isViewed() ? new Color(60, 76, 120)
+                                            : new Color(88, 117, 186);
+        card.setBackground(cardBg);
         card.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(
-                notif.isViewed() ? CARD_BG : new Color(220, 235, 255), 2, true),
+            BorderFactory.createLineBorder(cardBorder, 2, true),
             new EmptyBorder(20, 20, 20, 20)));
         card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 600));
 
@@ -1194,6 +1261,7 @@ public class ModernDashboardUI extends JFrame {
 
         JLabel titleLabel = new JLabel(notif.getTitle());
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        titleLabel.setForeground(new Color(245, 247, 255));
         titlePanel.add(titleLabel);
 
         if (!notif.getPriorityBadge().isEmpty()) {
@@ -1210,7 +1278,7 @@ public class ModernDashboardUI extends JFrame {
         JLabel postedByLabel =
             new JLabel("Posted by: " + notif.getPostedByName() + (notif.getPosterCompany() != null ? " (" + notif.getPosterCompany() + ")" : ""));
         postedByLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        postedByLabel.setForeground(TEXT_GRAY);
+        postedByLabel.setForeground(new Color(180, 198, 236));
         contentPanel.add(postedByLabel);
         contentPanel.add(Box.createVerticalStrut(10));
 
@@ -1221,6 +1289,8 @@ public class ModernDashboardUI extends JFrame {
         contentArea.setWrapStyleWord(true);
         contentArea.setEditable(false);
         contentArea.setOpaque(false);
+        contentArea.setForeground(new Color(232, 238, 255));
+        contentArea.setCaretColor(new Color(232, 238, 255));
         contentArea.setRows(2);
         contentPanel.add(contentArea);
         contentPanel.add(Box.createVerticalStrut(10));
@@ -1279,11 +1349,13 @@ public class ModernDashboardUI extends JFrame {
                 JLabel dateLabel =
                     new JLabel("📅 Date: " + notif.getEventDate().toString());
                 dateLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+                dateLabel.setForeground(new Color(220, 230, 255));
                 eventDetailsPanel.add(dateLabel);
             }
             if (notif.getEventLocation() != null) {
                 JLabel locLabel = new JLabel("📍 Location: " + notif.getEventLocation());
                 locLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+                locLabel.setForeground(new Color(220, 230, 255));
                 eventDetailsPanel.add(locLabel);
             }
 
@@ -1300,7 +1372,7 @@ public class ModernDashboardUI extends JFrame {
         contentPanel.add(Box.createVerticalStrut(10));
         JLabel timeLabel = new JLabel(getTimeAgo(notif.getCreatedAt()));
         timeLabel.setFont(new Font("Segoe UI", Font.ITALIC, 16));
-        timeLabel.setForeground(TEXT_GRAY);
+        timeLabel.setForeground(new Color(158, 180, 226));
         contentPanel.add(timeLabel);
 
         card.add(contentPanel, BorderLayout.CENTER);
@@ -1312,7 +1384,7 @@ public class ModernDashboardUI extends JFrame {
                 if (!notif.isViewed()) {
                     AlumniDAO.markNotificationAsViewed(notif.getNotificationId(),
                         currentUserId);
-                    card.setBackground(new Color(22, 22, 35));
+                    card.setBackground(new Color(26, 33, 52));
                 }
             }
         });
@@ -1323,8 +1395,10 @@ public class ModernDashboardUI extends JFrame {
     private void addDetailLabel(JPanel panel, String label, String value) {
         JLabel lbl = new JLabel(label);
         lbl.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        lbl.setForeground(new Color(155, 182, 246));
         JLabel val = new JLabel(value);
         val.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        val.setForeground(new Color(235, 240, 255));
         panel.add(lbl);
         panel.add(val);
     }
@@ -1399,28 +1473,28 @@ public class ModernDashboardUI extends JFrame {
                 notif.getDonationGoal(), notif.getDonationRaised());
             dlg.setVisible(true);
             if (dlg.isSubmitted()) {
-                // Refresh notifications view so amounts update
-                switchView("NOTIFICATIONS");
+                // Refresh notifications so donation amounts update immediately.
+                refreshNotificationsView();
             }
         });
         donPanel.add(donateBtn);
         return donPanel;
     }
 
-    private void showPostNotificationDialog() {
-        if (!currentUserIsAdmin) {
-            JOptionPane.showMessageDialog(
-                this, "Only administrators can post notices.", "Access Denied",
-                JOptionPane.WARNING_MESSAGE);
-            return;
+    private void refreshNotificationsView() {
+        if (notificationsListPanel != null) {
+            loadNotifications(notificationsListPanel);
         }
+    }
+
+    private void showPostNotificationDialog() {
         PostNotificationDialog dialog =
             new PostNotificationDialog(this, currentUserId);
         dialog.setVisible(true);
 
         if (dialog.isSuccess()) {
-            // Refresh notifications view
-            switchView("NOTIFICATIONS");
+            // Refresh notifications after a successful post.
+            refreshNotificationsView();
         }
     }
 
