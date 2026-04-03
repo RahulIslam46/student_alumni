@@ -26,8 +26,7 @@ public class DatabaseConnection {
         // Try common JDBC drivers used in this project.
         String[] driverCandidates = {
             "com.mysql.cj.jdbc.Driver",
-            "org.postgresql.Driver"
-        };
+            "org.postgresql.Driver"};
         for (String driverClass : driverCandidates) {
             try {
                 Class.forName(driverClass);
@@ -147,5 +146,135 @@ public class DatabaseConnection {
             e.printStackTrace();
         }
         return null;
+    }
+
+    private static void ensureAchievementSocialTables(Connection conn)
+        throws SQLException {
+        String likesTable =
+            "CREATE TABLE IF NOT EXISTS achievement_likes ("
+            + "achievement_id INT NOT NULL, "
+            + "username VARCHAR(255) NOT NULL, "
+            + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+            + "PRIMARY KEY (achievement_id, username))";
+
+        String commentsTable =
+            "CREATE TABLE IF NOT EXISTS achievement_comments ("
+            + "achievement_id INT NOT NULL, "
+            + "username VARCHAR(255) NOT NULL, "
+            + "comment_text TEXT NOT NULL, "
+            + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)";
+
+        try (PreparedStatement likeStmt = conn.prepareStatement(likesTable);
+             PreparedStatement commentStmt = conn.prepareStatement(commentsTable)) {
+            likeStmt.execute();
+            commentStmt.execute();
+        }
+    }
+
+    public static boolean hasUserLikedAchievement(int achievementId,
+        String username) {
+        String query =
+            "SELECT 1 FROM achievement_likes WHERE achievement_id = ? AND username = ?";
+        try (Connection conn = getConnection()) {
+            ensureAchievementSocialTables(conn);
+            try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                stmt.setInt(1, achievementId);
+                stmt.setString(2, username);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Error checking achievement like: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean toggleAchievementLike(int achievementId,
+        String username) {
+        String deleteQuery =
+            "DELETE FROM achievement_likes WHERE achievement_id = ? AND username = ?";
+        String insertQuery =
+            "INSERT INTO achievement_likes (achievement_id, username) VALUES (?, ?)";
+
+        try (Connection conn = getConnection()) {
+            ensureAchievementSocialTables(conn);
+
+            boolean currentlyLiked = hasUserLikedAchievement(achievementId, username);
+            if (currentlyLiked) {
+                try (PreparedStatement stmt = conn.prepareStatement(deleteQuery)) {
+                    stmt.setInt(1, achievementId);
+                    stmt.setString(2, username);
+                    stmt.executeUpdate();
+                }
+                return false;
+            }
+
+            try (PreparedStatement stmt = conn.prepareStatement(insertQuery)) {
+                stmt.setInt(1, achievementId);
+                stmt.setString(2, username);
+                stmt.executeUpdate();
+            }
+            return true;
+        } catch (SQLException e) {
+            System.out.println("Error toggling achievement like: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public static int getAchievementLikeCount(int achievementId) {
+        String query =
+            "SELECT COUNT(*) AS total FROM achievement_likes WHERE achievement_id = ?";
+        try (Connection conn = getConnection()) {
+            ensureAchievementSocialTables(conn);
+            try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                stmt.setInt(1, achievementId);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt("total");
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Error counting achievement likes: " + e.getMessage());
+        }
+        return 0;
+    }
+
+    public static boolean addAchievementComment(int achievementId,
+        String username, String commentText) {
+        String query =
+            "INSERT INTO achievement_comments (achievement_id, username, comment_text) VALUES (?, ?, ?)";
+        try (Connection conn = getConnection()) {
+            ensureAchievementSocialTables(conn);
+            try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                stmt.setInt(1, achievementId);
+                stmt.setString(2, username);
+                stmt.setString(3, commentText);
+                return stmt.executeUpdate() > 0;
+            }
+        } catch (SQLException e) {
+            System.out.println("Error adding achievement comment: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public static int getAchievementCommentCount(int achievementId) {
+        String query =
+            "SELECT COUNT(*) AS total FROM achievement_comments WHERE achievement_id = ?";
+        try (Connection conn = getConnection()) {
+            ensureAchievementSocialTables(conn);
+            try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                stmt.setInt(1, achievementId);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt("total");
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Error counting achievement comments: " + e.getMessage());
+        }
+        return 0;
     }
 }

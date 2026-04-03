@@ -625,6 +625,32 @@ public class AlumniDAO {
         }
     }
 
+    // Admin delete notification by ID
+    public static boolean adminDeleteNotification(int notificationId) {
+        String query = "DELETE FROM notifications WHERE notification_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setInt(1, notificationId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // Admin delete user by ID (cascades via foreign keys)
+    public static boolean adminDeleteUser(int userId) {
+        String query = "DELETE FROM users WHERE user_id = ? AND role <> 'admin'";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setInt(1, userId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // DONATION / PAYMENT METHODS
     // ─────────────────────────────────────────────────────────────────────────

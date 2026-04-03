@@ -1,2469 +1,2151 @@
 import java.awt.*;
 import java.awt.event.*;
-import java.awt.image.BufferedImage;
-import java.io.IOException;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Point2D;
+import java.io.File;
+import java.net.URI;
 import java.sql.Timestamp;
-import java.util.ArrayDeque;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
-import javax.imageio.ImageIO;
+import java.util.Map;
 import javax.swing.*;
-import javax.swing.border.*;
+import javax.swing.border.EmptyBorder;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 
 public class ModernDashboardUI extends JFrame {
-    // --- ENHANCED COLOR PALETTE ---
-    private final Color SIDEBAR_BG = new Color(18, 22, 36); // Deeper Sidebar
-    private final Color SIDEBAR_HOVER = new Color(45, 55, 72); // Lighter Navy
-    private final Color MAIN_BG =
-        new Color(15, 17, 28); // Deep Dark BG    // Ultra Light Gray
-    private final Color CARD_BG = new Color(28, 33, 52); // Dark Card BG
-    private final Color PRIMARY_BLUE = new Color(66, 153, 225); // Modern Blue
-    private final Color PRIMARY_HOVER = new Color(49, 130, 206); // Darker Blue
-    private final Color SUCCESS_GREEN = new Color(72, 187, 120); // Modern Green
-    private final Color ACCENT_PURPLE = new Color(159, 122, 234); // Purple Accent
-    private final Color TEXT_DARK = new Color(220, 230, 255); // Bright Text
-    private final Color TEXT_GRAY = new Color(160, 175, 210); // Muted Text
-    private final Color BORDER_COLOR = new Color(60, 70, 110); // Visible Border
-    private final Color STUDENT_BG = new Color(30, 65, 120); // Dark Blue Badge BG
-    private final Color STUDENT_TEXT =
-        new Color(140, 195, 255); // Bright Blue Text
-    private final Color ALUMNI_BG = new Color(20, 75, 50); // Dark Green Badge BG
-    private final Color ALUMNI_TEXT =
-        new Color(80, 210, 130); // Bright Green Text
+    // ── Premium Dark Palette ──
+    static final Color BG_DEEP = new Color(5, 8, 18);
+    static final Color BG_MID = new Color(9, 12, 28);
+    static final Color CARD = new Color(14, 19, 40);
+    static final Color CARD_HOV = new Color(20, 27, 54);
+    static final Color BORDER = new Color(45, 58, 100, 100);
+    static final Color ACCENT_T = new Color(20, 210, 190);
+    static final Color ACCENT_I = new Color(99, 102, 241);
+    static final Color ACCENT_B = new Color(56, 189, 248);
+    static final Color ACCENT_P = new Color(168, 85, 247);
+    static final Color ACCENT_G = new Color(52, 211, 153);
+    static final Color ACCENT_R = new Color(248, 113, 113);
+    static final Color ACCENT_O = new Color(251, 191, 36);
+    static final Color TXT_H = new Color(237, 242, 255);
+    static final Color TXT_S = new Color(148, 163, 200);
+    static final Color TXT_M = new Color(90, 108, 155);
 
-    private JPanel contentPanel;
-    private int currentUserId;
-    private String currentUsername;
-    private boolean currentUserIsAdmin = false;
-    private CardLayout contentCardLayout;
-    private JPanel mainContentArea;
-    private JPanel notificationsListPanel;
-    private JLabel sidebarUserAvatar;
-    private JButton backButton;
-    private String currentView = "DASHBOARD";
-    private final Deque<String> navHistory = new ArrayDeque<>();
+    // ── Fonts ──
+    static final Font F_LOGO = new Font("Segoe UI", Font.BOLD, 18);
+    static final Font F_H1 = new Font("Segoe UI", Font.BOLD, 28);
+    static final Font F_H2 = new Font("Segoe UI", Font.BOLD, 18);
+    static final Font F_H3 = new Font("Segoe UI", Font.BOLD, 14);
+    static final Font F_BODY = new Font("Segoe UI", Font.PLAIN, 13);
+    static final Font F_SMALL = new Font("Segoe UI", Font.PLAIN, 11);
+
+    private String username = "Md. Rahul Islam";
+    private int currentUserId = -1;
+    private JPanel contentArea;
+    private CardLayout cardLayout;
+    private JPanel sidebarPanel;
+    private final Map<String, JButton> sidebarButtons = new LinkedHashMap<>();
+    private String dashboardSearchQuery = "";
+    private JTextField dashboardSearchField;
+    private String activeView = "DASHBOARD";
+    private boolean isAdminUser = false;
+    private static final String SEARCH_PLACEHOLDER = "Search alumni by name, company, skill...";
+
+    public ModernDashboardUI() { this("Md. Rahul Islam"); }
 
     public ModernDashboardUI(String username) {
-        this.currentUsername = username;
-
-        // Get User ID from database
+        this.username = username;
         try {
-            this.currentUserId = AlumniDAO.getUserId(username);
-            if (this.currentUserId == -1) {
-                JOptionPane.showMessageDialog(this, "User not found in database!",
-                    "Error", JOptionPane.ERROR_MESSAGE);
-                dispose();
-                return;
-            }
-            this.currentUserIsAdmin = AlumniDAO.isAdminUser(this.currentUserId);
-            // Ensure profile_picture column exists in DB
+            currentUserId = AlumniDAO.getUserId(this.username);
             AlumniDAO.ensureProfilePictureColumn();
-        } catch (Exception e) {
-            e.printStackTrace();
-            JOptionPane.showMessageDialog(
-                this, "Database connection error:  " + e.getMessage(), "Error",
-                JOptionPane.ERROR_MESSAGE);
-            dispose();
-            return;
+            isAdminUser = currentUserId > 0 && AlumniDAO.isAdminUser(currentUserId);
+        } catch (Exception ignored) {
+            currentUserId = -1;
         }
 
-        // Frame Setup
-        setTitle("Alumni Connect - Modern Dashboard");
-        setSize(1400, 900);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setTitle("Alumni Connect — Dashboard");
+        setSize(1400, 850);
+        setMinimumSize(new Dimension(1100, 680));
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(0, 0));
-        getContentPane().setBackground(MAIN_BG);
 
-        // Sidebar
-        add(createModernSidebar(), BorderLayout.WEST);
-
-        // Main Content Area
-        JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
-        rightPanel.setBackground(MAIN_BG);
-
-        // Top Header Bar
-        rightPanel.add(createModernHeader(), BorderLayout.NORTH);
-
-        // Content Area with CardLayout for different views
-        contentCardLayout = new CardLayout();
-        mainContentArea = new JPanel(contentCardLayout);
-        mainContentArea.setBackground(MAIN_BG);
-
-        // Dashboard View
-        JPanel dashboardView = createDashboardView();
-        mainContentArea.add(dashboardView, "DASHBOARD");
-
-        // Profile View
-        JPanel profileView = createProfileView();
-        mainContentArea.add(profileView, "PROFILE");
-
-        // Messages View
-        JPanel messagesView = createMessagesView();
-        mainContentArea.add(messagesView, "MESSAGES");
-
-        // Notifications View
-        JPanel notificationsView = createNotificationsView();
-        mainContentArea.add(notificationsView, "NOTIFICATIONS");
-
-        // Achievements View
-        JPanel achievementsView = createAchievementsView();
-        mainContentArea.add(achievementsView, "ACHIEVEMENTS");
-
-        // Settings View
-        // JPanel settingsView =
-        //     createPlaceholderView("⚙️", "Settings", "Manage your
-        //     preferences");
-        // mainContentArea.add(settingsView, "SETTINGS");
-
-        rightPanel.add(mainContentArea, BorderLayout.CENTER);
-        add(rightPanel, BorderLayout.CENTER);
-
-        // Load initial data
-        loadDashboardData("");
-    }
-
-    // ==========================================
-    // GETTERS
-    // ==========================================
-    public String getCurrentUsername() { return currentUsername; }
-
-    // ==========================================
-    // VIEW SWITCHER
-    // ==========================================
-    private void switchView(String viewName) {
-        if (!viewName.equals(currentView)) {
-            navHistory.push(currentView); // save where we came from
-        }
-        currentView = viewName;
-        contentCardLayout.show(mainContentArea, viewName);
-        // Show back button only when not on dashboard
-        if (backButton != null) {
-            backButton.setVisible(!"DASHBOARD".equals(viewName));
-        }
-        // Reload data for specific views
-        if ("DASHBOARD".equals(viewName)) {
-            loadDashboardData("");
-        } else if ("PROFILE".equals(viewName)) {
-            loadProfileData();
-        } else if ("MESSAGES".equals(viewName)) {
-            loadMessagesData();
-        }
-    }
-
-    private void navigateBack() {
-        if (!navHistory.isEmpty()) {
-            String prev = navHistory.pop();
-            currentView = prev;
-            contentCardLayout.show(mainContentArea, prev);
-            if (backButton != null) {
-                backButton.setVisible(!"DASHBOARD".equals(prev));
-            }
-            if ("DASHBOARD".equals(prev)) {
-                loadDashboardData("");
-            } else if ("PROFILE".equals(prev)) {
-                loadProfileData();
-            } else if ("MESSAGES".equals(prev)) {
-                loadMessagesData();
-            }
-        } else {
-            // Already at root — go to dashboard
-            currentView = "DASHBOARD";
-            contentCardLayout.show(mainContentArea, "DASHBOARD");
-            if (backButton != null)
-                backButton.setVisible(false);
-            loadDashboardData("");
-        }
-    }
-
-    // ==========================================
-    // MODERN SIDEBAR
-    // ==========================================
-    private JPanel createModernSidebar() {
-        JPanel sidebar = new JPanel(new BorderLayout());
-        sidebar.setPreferredSize(new Dimension(260, getHeight()));
-        sidebar.setBackground(SIDEBAR_BG);
-        sidebar.setBorder(
-            BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(60, 70, 110)));
-
-        // Top Section - Logo & Navigation
-        JPanel topSection = new JPanel();
-        topSection.setLayout(new BoxLayout(topSection, BoxLayout.Y_AXIS));
-        topSection.setBackground(SIDEBAR_BG);
-        topSection.setBorder(new EmptyBorder(35, 8, 20, 8));
-
-        // Logo with Icon
-        JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
-        logoPanel.setBackground(SIDEBAR_BG);
-        logoPanel.setMaximumSize(new Dimension(280, 60));
-
-        JLabel logoIcon = new JLabel("🎓");
-        logoIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 32));
-
-        JLabel logoText = new JLabel("Alumni Connect");
-        logoText.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        logoText.setForeground(Color.WHITE);
-
-        logoPanel.add(logoIcon);
-        logoPanel.add(logoText);
-
-        topSection.add(logoPanel);
-        topSection.add(Box.createVerticalStrut(50));
-
-        // Navigation Menu
-        String[][] menuItems = {{"🏠", "Dashboard", "DASHBOARD"},
-            {"👤", "My Profile", "PROFILE"},
-            {"💬", "Messages", "MESSAGES"},
-            {"🔔", "Notifications", "NOTIFICATIONS"},
-            {"🏆", "Achievements", "ACHIEVEMENTS"}};
-        // {"⚙️", "Settings", "SETTINGS"}};
-
-        ButtonGroup menuGroup = new ButtonGroup();
-        for (int i = 0; i < menuItems.length; i++) {
-            final String viewName = menuItems[i][2];
-            JToggleButton btn =
-                createModernMenuButton(menuItems[i][0], menuItems[i][1], i == 0);
-            btn.addActionListener(e -> switchView(viewName));
-            menuGroup.add(btn);
-            topSection.add(btn);
-            topSection.add(Box.createVerticalStrut(8));
-        }
-
-        // AI chat shortcut for quick writing help anywhere in the app.
-        topSection.add(Box.createVerticalStrut(6));
-        JButton aiChatBtn = createAiChatButton();
-        topSection.add(aiChatBtn);
-
-        // Add Admin Control button (always visible; password-protected inside)
-        topSection.add(Box.createVerticalStrut(20));
-        JButton adminBtn = createAdminButton();
-        topSection.add(adminBtn);
-
-        sidebar.add(topSection, BorderLayout.NORTH);
-
-        // Bottom Section - User Info & Logout
-        JPanel bottomSection = new JPanel();
-        bottomSection.setLayout(new BoxLayout(bottomSection, BoxLayout.Y_AXIS));
-        bottomSection.setBackground(SIDEBAR_BG);
-        bottomSection.setBorder(new EmptyBorder(20, 20, 30, 20));
-
-        // Push everything to bottom nicely
-        bottomSection.add(Box.createVerticalGlue());
-
-        // User Profile Card
-        JPanel userCard = new JPanel(new BorderLayout(12, 0));
-        userCard.setBackground(new Color(35, 42, 62));
-        userCard.setBorder(new EmptyBorder(15, 15, 15, 15));
-        userCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 70));
-
-        JLabel userAvatar;
-        AlumniProfile sidebarProfile = AlumniDAO.getProfileByUserId(currentUserId);
-        String sidePic =
-            sidebarProfile != null ? sidebarProfile.getProfilePicturePath() : null;
-        if (sidePic != null && !sidePic.isEmpty() && new java.io.File(sidePic).exists()) {
-            userAvatar = new JLabel(new CircularImageIcon(sidePic, 42));
-        } else {
-            userAvatar =
-                new JLabel(new AvatarIcon(currentUsername, 42, PRIMARY_BLUE));
-        }
-        sidebarUserAvatar = userAvatar;
-
-        JPanel userInfo = new JPanel(new GridLayout(2, 1, 0, 2));
-        userInfo.setBackground(new Color(35, 42, 62));
-
-        JLabel userName = new JLabel(currentUsername);
-        userName.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        userName.setForeground(Color.WHITE);
-
-        JLabel userStatus = new JLabel("Active");
-        userStatus.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        userStatus.setForeground(new Color(160, 174, 192));
-
-        userInfo.add(userName);
-        userInfo.add(userStatus);
-
-        userCard.add(userAvatar, BorderLayout.WEST);
-        userCard.add(userInfo, BorderLayout.CENTER);
-
-        bottomSection.add(userCard);
-        bottomSection.add(Box.createVerticalStrut(15));
-
-        // Logout Button
-        JButton logoutBtn = createLogoutButton();
-        logoutBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
-        logoutBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 45));
-        bottomSection.add(logoutBtn);
-
-        sidebar.add(bottomSection, BorderLayout.SOUTH);
-
-        return sidebar;
-    }
-
-    private JToggleButton createModernMenuButton(String icon, String text,
-        boolean selected) {
-        final String iconStr = icon;
-        final String labelStr = text;
-
-        JToggleButton btn = new JToggleButton() {
+        JPanel root = new JPanel(new BorderLayout(0, 0)) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
-
-                int w = getWidth(), h = getHeight();
-
-                if (isSelected()) {
-                    // 2D flat pill - full width, solid indigo
-                    g2.setColor(new Color(99, 102, 241));
-                    g2.fillRoundRect(2, 3, w - 4, h - 6, 12, 12);
-                    // Subtle top gloss
-                    g2.setColor(new Color(255, 255, 255, 22));
-                    g2.fillRoundRect(2, 3, w - 4, (h - 6) / 2, 12, 12);
-                } else if (getModel().isPressed()) {
-                    g2.setColor(new Color(99, 102, 241, 70));
-                    g2.fillRoundRect(2, 3, w - 4, h - 6, 12, 12);
-                } else if (getModel().isRollover()) {
-                    g2.setColor(new Color(255, 255, 255, 18));
-                    g2.fillRoundRect(2, 3, w - 4, h - 6, 12, 12);
-                }
-
-                // Draw icon (emoji) + label text — avoids the □ toggle indicator
-                boolean sel = isSelected();
-
-                // Emoji icon — pushed to left
-                g2.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 17));
-                FontMetrics fmIcon = g2.getFontMetrics();
-                int textY = (h + fmIcon.getAscent() - fmIcon.getDescent()) / 2;
-                g2.setColor(sel ? Color.WHITE : new Color(160, 180, 225));
-                g2.drawString(iconStr, 14, textY);
-
-                // Label — pushed close to icon
-                g2.setFont(new Font("Segoe UI", sel ? Font.BOLD : Font.PLAIN, 16));
-                FontMetrics fmLabel = g2.getFontMetrics();
-                textY = (h + fmLabel.getAscent() - fmLabel.getDescent()) / 2;
-                g2.setColor(sel ? Color.WHITE : new Color(185, 200, 235));
-                g2.drawString(labelStr, 44, textY);
-
-                g2.dispose();
-            }
-
-            @Override
-            public Dimension getPreferredSize() {
-                return new Dimension(244, 50);
-            }
-            @Override
-            public Dimension getMinimumSize() {
-                return new Dimension(200, 50);
-            }
-            @Override
-            public Dimension getMaximumSize() {
-                return new Dimension(Integer.MAX_VALUE, 50);
-            }
-        };
-
-        btn.setOpaque(false);
-        btn.setContentAreaFilled(false);
-        btn.setFocusPainted(false);
-        btn.setBorderPainted(false);
-        btn.setBorder(new EmptyBorder(0, 0, 0, 0));
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.setSelected(selected);
-        btn.setRolloverEnabled(true);
-
-        return btn;
-    }
-
-    private JButton createLogoutButton() {
-        JButton btn = new JButton("🚪  Logout") {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-
-                if (getModel().isPressed()) {
-                    g2.setColor(new Color(180, 40, 55)); // Dark pressed
-                } else if (getModel().isRollover()) {
-                    g2.setColor(new Color(220, 70, 85)); // Soft hover
-                } else {
-                    g2.setColor(new Color(200, 55, 70)); // Normal modern red
-                }
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        btn.setForeground(new Color(229, 62, 62));
-        btn.setBorder(new EmptyBorder(12, 20, 12, 20));
-        btn.setForeground(Color.WHITE);
-        btn.setMaximumSize(new Dimension(280, 45));
-        btn.setContentAreaFilled(false);
-        btn.setFocusPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-
-        btn.addActionListener(e -> {
-            int choice = JOptionPane.showConfirmDialog(
-                this, "Are you sure you want to logout?", "Confirm Logout",
-                JOptionPane.YES_NO_OPTION);
-            if (choice == JOptionPane.YES_OPTION) {
-                dispose();
-                // Open login frame
-                SwingUtilities.invokeLater(() -> new LoginFrame().setVisible(true));
-            }
-        });
-
-        return btn;
-    }
-
-    private JButton createAdminButton() {
-        JButton btn = new JButton("⚙️  Admin Panel") {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                if (getModel().isPressed())
-                    g2.setColor(new Color(142, 68, 173));
-                else if (getModel().isRollover())
-                    g2.setColor(new Color(155, 89, 182));
-                else
-                    g2.setColor(new Color(155, 89, 182, 60));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        btn.setForeground(new Color(155, 89, 182));
-        btn.setHorizontalAlignment(SwingConstants.LEFT);
-        btn.setBorder(new EmptyBorder(12, 20, 12, 20));
-        btn.setMaximumSize(new Dimension(280, 45));
-        btn.setContentAreaFilled(false);
-        btn.setFocusPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.addActionListener(e -> {
-            JPasswordField passwordField = new JPasswordField();
-            int option = JOptionPane.showConfirmDialog(
-                this, passwordField,
-                "Enter Admin Password:", JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE);
-            if (option == JOptionPane.OK_OPTION) {
-                String password = new String(passwordField.getPassword());
-                if ("admin123".equals(password)) {
-                    SwingUtilities.invokeLater(
-                        ()
-                            -> new AdminControlPanel(ModernDashboardUI.this)
-                                   .setVisible(true));
-                } else {
-                    JOptionPane.showMessageDialog(this, "Invalid password!",
-                        "Access Denied",
-                        JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        });
-        return btn;
-    }
-
-    private JButton createAiChatButton() {
-        JButton btn = new JButton("🤖  Chat with AI") {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                if (getModel().isPressed())
-                    g2.setColor(new Color(37, 99, 235));
-                else if (getModel().isRollover())
-                    g2.setColor(new Color(59, 130, 246));
-                else
-                    g2.setColor(new Color(59, 130, 246, 60));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        btn.setForeground(new Color(147, 197, 253));
-        btn.setHorizontalAlignment(SwingConstants.LEFT);
-        btn.setBorder(new EmptyBorder(12, 20, 12, 20));
-        btn.setMaximumSize(new Dimension(280, 45));
-        btn.setContentAreaFilled(false);
-        btn.setFocusPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.addActionListener(e -> {
-            String context = "General assistant for Alumni Connect portal. "
-                + "Help with writing notices, achievements, and messages. "
-                + "Provide multiple alternatives when asked.";
-            AiChatDialog.openOrFocus(this, "Dashboard AI Chat", context, null);
-        });
-        return btn;
-    }
-
-    // ==========================================
-    // MODERN HEADER
-    // ==========================================
-    private JPanel createModernHeader() {
-        JPanel header = new JPanel(new BorderLayout(20, 0));
-        header.setBackground(new Color(18, 22, 36));
-        header.setPreferredSize(new Dimension(getWidth(), 90));
-        header.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_COLOR),
-            new EmptyBorder(20, 35, 20, 35)));
-
-        // ---- Back button (hidden on dashboard) ----
-        backButton = new JButton("\u2190 Back");
-        backButton.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        backButton.setForeground(PRIMARY_BLUE);
-        backButton.setBackground(new Color(18, 22, 36));
-        backButton.setBorderPainted(false);
-        backButton.setContentAreaFilled(false);
-        backButton.setFocusPainted(false);
-        backButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        backButton.setVisible(false); // hidden on start (dashboard is default)
-        backButton.addActionListener(e -> navigateBack());
-
-        // Left - Back + Search Bar
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
-        searchPanel.setBackground(new Color(18, 22, 36));
-        searchPanel.add(backButton);
-
-        JPanel searchBox = new JPanel(new BorderLayout(10, 0)) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(MAIN_BG);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 25, 25);
+                g2.setColor(BG_DEEP);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                drawAurora(g2, getWidth(), getHeight());
                 g2.dispose();
             }
         };
-        searchBox.setPreferredSize(new Dimension(450, 50));
-        searchBox.setBorder(new EmptyBorder(8, 20, 8, 20));
-        searchBox.setOpaque(false);
+        root.setOpaque(false);
+        setContentPane(root);
 
-        JLabel searchIcon = new JLabel("🔍");
-        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 18));
+        JPanel right = new JPanel(new BorderLayout(0, 0));
+        right.setOpaque(false);
+        right.add(buildTopBar(), BorderLayout.NORTH);
 
-        JTextField searchField = new JTextField();
-        searchField.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        searchField.setBorder(null);
-        searchField.setBackground(MAIN_BG);
-        searchField.setForeground(Color.WHITE);
-        setPlaceholder(searchField, "Search alumni by name, skills, company...");
+        cardLayout = new CardLayout();
+        contentArea = new JPanel(cardLayout);
+        contentArea.setOpaque(false);
+        contentArea.add(buildDashboardView(), "DASHBOARD");
+        contentArea.add(buildProfileView(), "PROFILE");
+        contentArea.add(buildMessagesView(), "MESSAGES");
+        contentArea.add(buildNotifView(), "NOTIFICATIONS");
+        contentArea.add(buildAchievementsView(), "ACHIEVEMENTS");
+        contentArea.add(buildAnalyticsView(), "ANALYTICS");
 
-        searchBox.add(searchIcon, BorderLayout.WEST);
-        searchBox.add(searchField, BorderLayout.CENTER);
-
-        JButton searchBtn = createModernButton("Search", PRIMARY_BLUE);
-        searchBtn.setPreferredSize(new Dimension(100, 50));
-        searchBtn.addActionListener(e -> {
-            String query = searchField.getText().trim();
-            if (query.equals("Search alumni by name, skills, company...")) {
-                query = "";
-            }
-            loadDashboardData(query);
-            switchView("DASHBOARD");
-        });
-
-        // Add Enter key support for search
-        searchField.addActionListener(e -> {
-            String query = searchField.getText().trim();
-            if (query.equals("Search alumni by name, skills, company...")) {
-                query = "";
-            }
-            loadDashboardData(query);
-            switchView("DASHBOARD");
-        });
-
-        searchPanel.add(searchBox);
-        searchPanel.add(searchBtn);
-
-        // Right - Action Buttons
-        JPanel actionsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
-        actionsPanel.setBackground(new Color(18, 22, 36));
-
-        // Notification Button with Bell Icon
-        JButton notifBtn;
-        try {
-            // Try to load bell icon from resources
-            ImageIcon bellIcon = new ImageIcon("resources/images/bell-icon.jpg");
-            if (bellIcon.getIconWidth() > 0) {
-                // Scale image to fit button
-                Image scaledImage =
-                    bellIcon.getImage().getScaledInstance(30, 40, Image.SCALE_SMOOTH);
-                notifBtn = new JButton(new ImageIcon(scaledImage));
-                notifBtn.setPreferredSize(new Dimension(50, 50));
-                notifBtn.setContentAreaFilled(false);
-                notifBtn.setFocusPainted(false);
-                notifBtn.setBorderPainted(false);
-                notifBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-                notifBtn.setToolTipText("Notifications");
-            } else {
-                // Fallback to emoji if image not found
-                notifBtn = createIconButton("🔔", "Notifications");
-            }
-        } catch (Exception e) {
-            // Fallback to emoji if error
-            notifBtn = createIconButton("🔔", "Notifications");
-        }
-
-        // Add unread notification count badge
-        int unreadCount = AlumniDAO.getUnreadNotificationCount(currentUserId);
-        if (unreadCount > 0) {
-            notifBtn.setText(String.valueOf(unreadCount));
-            notifBtn.setHorizontalTextPosition(SwingConstants.RIGHT);
-            notifBtn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-            notifBtn.setForeground(new Color(220, 53, 69)); // Red badge color
-        }
-        notifBtn.addActionListener(e -> switchView("NOTIFICATIONS"));
-
-        actionsPanel.add(notifBtn);
-
-        header.add(searchPanel, BorderLayout.WEST);
-        header.add(actionsPanel, BorderLayout.EAST);
-
-        return header;
+        right.add(contentArea, BorderLayout.CENTER);
+        root.add(buildSidebar(), BorderLayout.WEST);
+        root.add(right, BorderLayout.CENTER);
+        refreshSidebarSelection();
     }
 
-    // ==========================================
-    // DASHBOARD VIEW
-    // ==========================================
-    private JPanel createDashboardView() {
-        JPanel view = new JPanel(new BorderLayout());
-        view.setBackground(MAIN_BG);
+    public String getCurrentUsername() { return username; }
 
-        // Stats Cards at Top
-        JPanel statsPanel = createStatsPanel();
-        view.add(statsPanel, BorderLayout.NORTH);
-
-        // Scrollable Content
-        contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setBackground(MAIN_BG);
-        contentPanel.setBorder(new EmptyBorder(25, 35, 35, 35));
-
-        JScrollPane scrollPane = createStyledScrollPane(contentPanel);
-        view.add(scrollPane, BorderLayout.CENTER);
-
-        return view;
+    private void showView(String view) {
+        if (cardLayout == null || contentArea == null) return;
+        activeView = view;
+        contentArea.removeAll();
+        contentArea.add(buildDashboardView(), "DASHBOARD");
+        contentArea.add(buildProfileView(), "PROFILE");
+        contentArea.add(buildMessagesView(), "MESSAGES");
+        contentArea.add(buildNotifView(), "NOTIFICATIONS");
+        contentArea.add(buildAchievementsView(), "ACHIEVEMENTS");
+        contentArea.add(buildAnalyticsView(), "ANALYTICS");
+        cardLayout.show(contentArea, view);
+        contentArea.revalidate();
+        contentArea.repaint();
+        refreshSidebarSelection();
     }
 
-    // ==========================================
-    // PROFILE VIEW
-    // ==========================================
-    private JPanel createProfileView() {
-        JPanel view = new JPanel(new BorderLayout());
-        view.setBackground(MAIN_BG);
-
-        JPanel profileContent = new JPanel();
-        profileContent.setLayout(new BoxLayout(profileContent, BoxLayout.Y_AXIS));
-        profileContent.setBackground(MAIN_BG);
-        profileContent.setBorder(new EmptyBorder(35, 35, 35, 35));
-
-        JScrollPane scrollPane = createStyledScrollPane(profileContent);
-        view.add(scrollPane, BorderLayout.CENTER);
-
-        return view;
+    private void applyDashboardSearch() {
+        if (dashboardSearchField == null) return;
+        String query = dashboardSearchField.getText();
+        if (query == null) query = "";
+        query = query.trim();
+        if (SEARCH_PLACEHOLDER.equals(query)) query = "";
+        dashboardSearchQuery = query;
+        showView("DASHBOARD");
     }
 
-    private void loadProfileData() {
-        JPanel profileContent =
-            (JPanel) ((JScrollPane) ((JPanel) mainContentArea.getComponent(1))
-                          .getComponent(0))
-                .getViewport()
-                .getView();
-        profileContent.removeAll();
-
-        AlumniProfile myProfile = AlumniDAO.getProfileByUserId(currentUserId);
-        if (myProfile == null) {
-            myProfile = new AlumniProfile();
-            myProfile.setUserId(currentUserId);
-            myProfile.setFullName(currentUsername);
-            myProfile.setEmail(currentUsername + "@example.com");
-            myProfile.setCompany("Not specified");
-            myProfile.setJobRole("Not specified");
-            myProfile.setGraduationYear(2020);
-            myProfile.setSkills("Not specified");
-            myProfile.setBio("Please update your profile");
-        }
-
-        final AlumniProfile profileToEdit = myProfile;
-
-        // Header Card with gradient accent top band
-        JPanel headerCard = new JPanel() {
+    private JPanel buildSidebar() {
+        sidebarPanel = new JPanel(new BorderLayout(0, 18)) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(28, 33, 52));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
-                GradientPaint gp =
-                    new GradientPaint(0, 0, new Color(99, 102, 241), getWidth(), 0,
-                        new Color(66, 153, 225));
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                GradientPaint gp = new GradientPaint(0, 0, new Color(8, 11, 24), 0, getHeight(), new Color(11, 16, 34));
                 g2.setPaint(gp);
-                g2.fillRoundRect(0, 0, getWidth(), 10, 18, 18);
-                g2.fillRect(0, 5, getWidth(), 5);
-                g2.setColor(new Color(70, 80, 130));
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                g2.setColor(new Color(255, 255, 255, 10));
+                g2.fillRect(getWidth() - 1, 0, 1, getHeight());
+                g2.dispose();
+            }
+        };
+        sidebarPanel.setOpaque(false);
+        sidebarPanel.setPreferredSize(new Dimension(290, 0));
+        sidebarPanel.setBorder(new EmptyBorder(24, 20, 24, 20));
+
+        JPanel body = new JPanel();
+        body.setOpaque(false);
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+
+        JPanel brand = new JPanel(new BorderLayout(12, 0));
+        brand.setOpaque(false);
+        brand.setAlignmentX(LEFT_ALIGNMENT);
+        brand.setMaximumSize(new Dimension(Integer.MAX_VALUE, 72));
+        JLabel logo = new JLabel(new AvatarIcon("Alumni Connect", 48, ACCENT_I));
+        JPanel brandText = new JPanel();
+        brandText.setOpaque(false);
+        brandText.setLayout(new BoxLayout(brandText, BoxLayout.Y_AXIS));
+        brandText.add(lbl("Alumni Connect", F_H2, TXT_H));
+        brandText.add(vgap(2));
+        brandText.add(lbl("Modern alumni dashboard", F_SMALL, TXT_S));
+        brand.add(logo, BorderLayout.WEST);
+        brand.add(brandText, BorderLayout.CENTER);
+        body.add(brand);
+
+        body.add(vgap(20));
+
+        JPanel profileCard = new JPanel(new BorderLayout(14, 0)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(16, 22, 44));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(new Color(70, 85, 130, 90));
                 g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
-        headerCard.setOpaque(false);
-        headerCard.setLayout(new BoxLayout(headerCard, BoxLayout.Y_AXIS));
-        headerCard.setBorder(new EmptyBorder(36, 30, 28, 30));
-        headerCard.setMaximumSize(
-            new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        profileCard.setOpaque(false);
+        profileCard.setBorder(new EmptyBorder(18, 16, 18, 16));
+        profileCard.setAlignmentX(LEFT_ALIGNMENT);
+        profileCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 92));
+        profileCard.add(new JLabel(new AvatarIcon(firstName(username), 48, ACCENT_T)), BorderLayout.WEST);
 
-        JLabel avatar;
-        String picPath = myProfile.getProfilePicturePath();
-        if (picPath != null && !picPath.isEmpty() && new java.io.File(picPath).exists()) {
-            avatar = new JLabel(new CircularImageIcon(picPath, 110));
-        } else {
-            avatar = new JLabel(
-                new AvatarIcon(myProfile.getFullName(), 110, PRIMARY_BLUE));
-        }
-        avatar.setAlignmentX(Component.CENTER_ALIGNMENT);
-        headerCard.add(avatar);
-        headerCard.add(Box.createVerticalStrut(16));
+        JPanel profileText = new JPanel();
+        profileText.setOpaque(false);
+        profileText.setLayout(new BoxLayout(profileText, BoxLayout.Y_AXIS));
+        profileText.add(lbl(safe(username, "Member"), new Font("Segoe UI", Font.BOLD, 15), TXT_H));
+        profileText.add(vgap(3));
+        profileText.add(lbl(isAdminUser ? "Administrator access" : "Member account", F_SMALL, TXT_S));
+        profileCard.add(profileText, BorderLayout.CENTER);
+        body.add(profileCard);
 
-        JLabel nameLabel = new JLabel(myProfile.getFullName());
-        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 30));
-        nameLabel.setForeground(Color.WHITE);
-        nameLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        headerCard.add(nameLabel);
-        headerCard.add(Box.createVerticalStrut(5));
+        body.add(vgap(24));
+        body.add(lbl("Navigation", F_SMALL, TXT_M));
+        body.add(vgap(10));
 
-        String roleStr = (myProfile.getJobRole() != null && !myProfile.getJobRole().equals("Not specified")
-                                 ? myProfile.getJobRole()
-                                 : "")
-            + (myProfile.getCompany() != null && !myProfile.getCompany().equals("Not specified")
-                    ? "  at  " + myProfile.getCompany()
-                    : "");
-        if (!roleStr.isBlank()) {
-            JLabel roleTagLabel = new JLabel(roleStr.trim());
-            roleTagLabel.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-            roleTagLabel.setForeground(new Color(130, 160, 230));
-            roleTagLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-            headerCard.add(roleTagLabel);
-            headerCard.add(Box.createVerticalStrut(4));
-        }
+        body.add(sidebarButton("🏠  Dashboard", "DASHBOARD", ACCENT_I));
+        body.add(vgap(8));
+        body.add(sidebarButton("👤  My Profile", "PROFILE", ACCENT_T));
+        body.add(vgap(8));
+        body.add(sidebarButton("💬  Messages", "MESSAGES", ACCENT_B));
+        body.add(vgap(8));
+        body.add(sidebarButton("🔔  Notifications", "NOTIFICATIONS", ACCENT_O));
+        body.add(vgap(8));
+        body.add(sidebarButton("🏆  Achievements", "ACHIEVEMENTS", ACCENT_G));
+        body.add(vgap(8));
+        body.add(sidebarButton("⚙️  Admin Panel", "ADMIN", ACCENT_P));
 
-        JLabel emailLabel = new JLabel(myProfile.getEmail());
-        emailLabel.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        emailLabel.setForeground(new Color(110, 135, 200));
-        emailLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        headerCard.add(emailLabel);
-        headerCard.add(Box.createVerticalStrut(20));
+        sidebarPanel.add(body, BorderLayout.NORTH);
 
-        JSeparator hSep = new JSeparator();
-        hSep.setForeground(new Color(60, 70, 110));
-        hSep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-        headerCard.add(hSep);
-        headerCard.add(Box.createVerticalStrut(16));
-
-        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 14, 0));
-        btnRow.setOpaque(false);
-
-        JButton editBtn = new JButton("  Edit Profile  ") {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getModel().isPressed() ? new Color(79, 82, 220)
-                        : getModel().isRollover()  ? new Color(115, 118, 255)
-                                                   : new Color(99, 102, 241));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        editBtn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        editBtn.setForeground(Color.WHITE);
-        editBtn.setPreferredSize(new Dimension(150, 44));
-        editBtn.setContentAreaFilled(false);
-        editBtn.setFocusPainted(false);
-        editBtn.setBorderPainted(false);
-        editBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        editBtn.addActionListener(e -> editProfile(profileToEdit));
-
-        JButton changePhotoBtn = new JButton("  Change Photo  ") {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getModel().isPressed() ? new Color(45, 50, 78)
-                        : getModel().isRollover()  ? new Color(52, 60, 90)
-                                                   : new Color(38, 45, 70));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.setColor(new Color(80, 95, 150));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        changePhotoBtn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        changePhotoBtn.setForeground(new Color(180, 200, 255));
-        changePhotoBtn.setPreferredSize(new Dimension(168, 44));
-        changePhotoBtn.setContentAreaFilled(false);
-        changePhotoBtn.setFocusPainted(false);
-        changePhotoBtn.setBorderPainted(false);
-        changePhotoBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        changePhotoBtn.addActionListener(e -> editProfile(profileToEdit));
-
-        btnRow.add(editBtn);
-        btnRow.add(changePhotoBtn);
-        headerCard.add(btnRow);
-
-        profileContent.add(headerCard);
-        profileContent.add(Box.createVerticalStrut(18));
-
-        JPanel detailsCard = createCard();
-        detailsCard.setLayout(new BoxLayout(detailsCard, BoxLayout.Y_AXIS));
-
-        JLabel detailsTitle = new JLabel("Profile Details");
-        detailsTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        detailsTitle.setForeground(new Color(160, 185, 255));
-        detailsTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-        detailsCard.add(detailsTitle);
-        detailsCard.add(Box.createVerticalStrut(16));
-
-        addProfileDetailRow(detailsCard, "Company",
-            myProfile.getCompany() != null ? myProfile.getCompany()
-                                           : "Not specified");
-        addProfileDetailRow(detailsCard, "Job Role",
-            myProfile.getJobRole() != null ? myProfile.getJobRole()
-                                           : "Not specified");
-        addProfileDetailRow(detailsCard, "Graduation Year",
-            String.valueOf(myProfile.getGraduationYear()));
-        addProfileDetailRow(detailsCard, "Skills",
-            myProfile.getSkills() != null ? myProfile.getSkills()
-                                          : "Not specified");
-
-        profileContent.add(detailsCard);
-        profileContent.add(Box.createVerticalStrut(18));
-
-        JPanel bioCard = createCard();
-        bioCard.setLayout(new BoxLayout(bioCard, BoxLayout.Y_AXIS));
-
-        JLabel bioLabel = new JLabel("About Me");
-        bioLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        bioLabel.setForeground(new Color(160, 185, 255));
-        bioLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        bioCard.add(bioLabel);
-        bioCard.add(Box.createVerticalStrut(12));
-
-        JSeparator bioSep = new JSeparator();
-        bioSep.setForeground(new Color(60, 70, 110));
-        bioSep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-        bioCard.add(bioSep);
-        bioCard.add(Box.createVerticalStrut(14));
-
-        JTextArea bioText = new JTextArea(
-            myProfile.getBio() != null && !myProfile.getBio().isEmpty()
-                ? myProfile.getBio()
-                : "No bio yet. Click Edit Profile to add one.");
-        bioText.setLineWrap(true);
-        bioText.setWrapStyleWord(true);
-        bioText.setEditable(false);
-        bioText.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        bioText.setOpaque(false);
-        bioText.setForeground(new Color(210, 220, 255));
-        bioText.setBorder(null);
-        bioCard.add(bioText);
-
-        profileContent.add(bioCard);
-
-        profileContent.revalidate();
-        profileContent.repaint();
+        JPanel bottom = new JPanel();
+        bottom.setOpaque(false);
+        bottom.setLayout(new BoxLayout(bottom, BoxLayout.Y_AXIS));
+        bottom.setAlignmentX(LEFT_ALIGNMENT);
+        bottom.add(vgap(12));
+        JButton logoutBtn = sidebarActionButton("⎋  Logout", ACCENT_R);
+        logoutBtn.addActionListener(e -> logoutToLogin());
+        bottom.add(logoutBtn);
+        sidebarPanel.add(bottom, BorderLayout.SOUTH);
+        return sidebarPanel;
     }
 
-    private JPanel createCard() {
-        JPanel card = new JPanel() {
+    private JButton sidebarButton(String label, String view, Color accent) {
+        JButton button = new JButton(label) {
+            boolean hovered = false;
+
+            {
+                addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseEntered(MouseEvent e) {
+                        hovered = true;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mouseExited(MouseEvent e) {
+                        hovered = false;
+                        repaint();
+                    }
+                });
+            }
+
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getBackground());
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                boolean selected = view.equals(activeView);
+                Color fill = selected ? new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 42)
+                    : hovered         ? new Color(255, 255, 255, 16)
+                                      : new Color(255, 255, 255, 8);
+                g2.setColor(fill);
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
-                g2.setColor(new Color(60, 70, 110));
+                g2.setColor(selected ? new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 120)
+                                     : new Color(255, 255, 255, 24));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        button.setAlignmentX(LEFT_ALIGNMENT);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setFont(F_H3);
+        button.setForeground(TXT_H);
+        button.setBorder(new EmptyBorder(14, 16, 14, 16));
+        button.setContentAreaFilled(false);
+        button.setBorderPainted(false);
+        button.setFocusPainted(false);
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+        button.addActionListener(e -> {
+            if ("ADMIN".equals(view)) {
+                openAdminPanelFromDashboard();
+            } else {
+                showView(view);
+            }
+        });
+        sidebarButtons.put(view, button);
+        return button;
+    }
+
+    private JButton sidebarActionButton(String label, Color accent) {
+        JButton button = new JButton(label) {
+            boolean hovered = false;
+
+            {
+                addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseEntered(MouseEvent e) {
+                        hovered = true;
+                        repaint();
+                    }
+
+                    @Override
+                    public void mouseExited(MouseEvent e) {
+                        hovered = false;
+                        repaint();
+                    }
+                });
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(hovered ? new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 55)
+                                    : new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 28));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 110));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        button.setFont(F_H3);
+        button.setForeground(Color.WHITE);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setBorder(new EmptyBorder(14, 16, 14, 16));
+        button.setContentAreaFilled(false);
+        button.setBorderPainted(false);
+        button.setFocusPainted(false);
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+        return button;
+    }
+
+    private void refreshSidebarSelection() {
+        if (sidebarButtons.isEmpty()) return;
+        for (Map.Entry<String, JButton> entry : sidebarButtons.entrySet()) {
+            entry.getValue().repaint();
+        }
+    }
+
+    private void openAdminPanelFromDashboard() {
+        if (!isAdminUser) {
+            JOptionPane.showMessageDialog(this, "Admin access is required to open the admin panel.", "Admin Panel", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        AdminControlPanel adminPanel = new AdminControlPanel(this);
+        adminPanel.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                ModernDashboardUI.this.setVisible(true);
+                ModernDashboardUI.this.toFront();
+            }
+        });
+        setVisible(false);
+        adminPanel.setVisible(true);
+    }
+
+    private void logoutToLogin() {
+        int choice = JOptionPane.showConfirmDialog(this,
+            "Do you want to log out now?",
+            "Logout",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE);
+        if (choice != JOptionPane.YES_OPTION) return;
+        dispose();
+        SwingUtilities.invokeLater(() -> new LoginFrame().setVisible(true));
+    }
+
+    private void drawAurora(Graphics2D g2, int w, int h) {
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        RadialGradientPaint r1 = new RadialGradientPaint(new Point2D.Float(w * 0.78f, h * 0.06f), w * 0.40f,
+            new float[] {0f, 1f}, new Color[] {new Color(20, 210, 190, 22), new Color(0, 0, 0, 0)});
+        g2.setPaint(r1);
+        g2.fillRect(0, 0, w, h);
+        RadialGradientPaint r2 = new RadialGradientPaint(new Point2D.Float(w * 0.12f, h * 0.85f), w * 0.35f,
+            new float[] {0f, 1f}, new Color[] {new Color(99, 102, 241, 20), new Color(0, 0, 0, 0)});
+        g2.setPaint(r2);
+        g2.fillRect(0, 0, w, h);
+        RadialGradientPaint r3 = new RadialGradientPaint(new Point2D.Float(w * 0.50f, h * 0.45f), w * 0.22f,
+            new float[] {0f, 1f}, new Color[] {new Color(168, 85, 247, 10), new Color(0, 0, 0, 0)});
+        g2.setPaint(r3);
+        g2.fillRect(0, 0, w, h);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  TOP BAR
+    // ═══════════════════════════════════════════════════════════
+    private JPanel buildTopBar() {
+        JPanel bar = new JPanel(new BorderLayout(16, 0)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setColor(new Color(8, 11, 24, 230));
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                g2.setColor(new Color(45, 58, 100, 60));
+                g2.fillRect(0, getHeight() - 1, getWidth(), 1);
+                g2.dispose();
+            }
+        };
+        bar.setOpaque(false);
+        bar.setPreferredSize(new Dimension(0, 72));
+        bar.setBorder(new EmptyBorder(14, 28, 14, 28));
+
+        JPanel srch = new JPanel(new BorderLayout(10, 0)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(16, 22, 44));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 28, 28);
+                g2.setColor(BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 28, 28);
+                g2.dispose();
+            }
+        };
+        srch.setOpaque(false);
+        srch.setPreferredSize(new Dimension(480, 44));
+        srch.setBorder(new EmptyBorder(0, 16, 0, 8));
+
+        JLabel si = lbl("⌕", new Font("Segoe UI", Font.PLAIN, 18), TXT_M);
+        dashboardSearchField = new JTextField();
+        dashboardSearchField.setFont(F_BODY);
+        dashboardSearchField.setForeground(TXT_H);
+        dashboardSearchField.setBackground(new Color(0, 0, 0, 0));
+        dashboardSearchField.setOpaque(false);
+        dashboardSearchField.setBorder(null);
+        dashboardSearchField.setCaretColor(ACCENT_T);
+        if (dashboardSearchQuery.isEmpty())
+            setPlaceholder(dashboardSearchField, SEARCH_PLACEHOLDER);
+        else {
+            dashboardSearchField.setText(dashboardSearchQuery);
+            dashboardSearchField.setForeground(TXT_H);
+        }
+
+        JButton goBtn = glowBtn("Search", ACCENT_I);
+        goBtn.setPreferredSize(new Dimension(86, 36));
+        srch.add(si, BorderLayout.WEST);
+        srch.add(dashboardSearchField, BorderLayout.CENTER);
+        srch.add(goBtn, BorderLayout.EAST);
+        bar.add(srch, BorderLayout.WEST);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        actions.setOpaque(false);
+
+        JButton postBtn = glowBtn("+ Post Notice", ACCENT_G);
+        postBtn.addActionListener(e -> {
+            if (currentUserId <= 0) {
+                JOptionPane.showMessageDialog(this, "Unable to resolve your user profile for posting.", "Post Notice", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            PostNotificationDialog dialog = new PostNotificationDialog(this, currentUserId);
+            dialog.setVisible(true);
+        });
+
+        String dateText = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM d, yyyy"));
+        goBtn.addActionListener(e -> applyDashboardSearch());
+        dashboardSearchField.addActionListener(e -> applyDashboardSearch());
+
+        actions.add(postBtn);
+        actions.add(lbl(dateText, F_SMALL, TXT_M));
+
+        List<Component> removeList = new ArrayList<>();
+        for (Component c : actions.getComponents()) {
+            if (c instanceof AbstractButton) {
+                AbstractButton b = (AbstractButton) c;
+                String txt = b.getText();
+                boolean emptyText = txt == null || txt.trim().isEmpty();
+                if (emptyText && b.getIcon() == null && b.getPreferredSize().width <= 46) removeList.add(c);
+            }
+        }
+        for (Component c : removeList) actions.remove(c);
+        bar.add(actions, BorderLayout.EAST);
+        return bar;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  DASHBOARD VIEW
+    // ═══════════════════════════════════════════════════════════
+    private JPanel buildDashboardView() {
+        List<AlumniProfile> profiles = new ArrayList<>();
+        List<Notification> notifications = new ArrayList<>();
+        List<Notification> filteredNotifications = new ArrayList<>();
+        int totalAlumni = 0, totalStudents = 0, totalProfessionals = 0, unreadMessages = 0;
+        boolean hasSearch = dashboardSearchQuery != null && !dashboardSearchQuery.trim().isEmpty();
+        String q = hasSearch ? dashboardSearchQuery.trim().toLowerCase() : "";
+        try {
+            profiles = hasSearch ? AlumniDAO.searchAlumni(dashboardSearchQuery) : AlumniDAO.getAllProfiles();
+            notifications = AlumniDAO.getAllNotifications(currentUserId);
+            totalAlumni = AlumniDAO.getTotalProfileCount();
+            totalStudents = AlumniDAO.getStudentCount();
+            totalProfessionals = Math.max(0, totalAlumni - totalStudents);
+            unreadMessages = AlumniDAO.getUnreadMessageCount(currentUserId);
+        } catch (Exception ignored) {
+        }
+
+        if (hasSearch) {
+            for (Notification n : notifications) {
+                String title = safe(n.getTitle(), "").toLowerCase();
+                String contentTxt = safe(n.getContent(), "").toLowerCase();
+                String postedBy = safe(n.getPostedByName(), "").toLowerCase();
+                if (title.contains(q) || contentTxt.contains(q) || postedBy.contains(q))
+                    filteredNotifications.add(n);
+            }
+        } else {
+            filteredNotifications = notifications;
+        }
+
+        JPanel outer = new JPanel(new BorderLayout(0, 0));
+        outer.setOpaque(false);
+
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(28, 30, 30, 30));
+
+        // Title row
+        JPanel titleRow = new JPanel(new BorderLayout());
+        titleRow.setOpaque(false);
+        titleRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
+        JPanel titleLeft = new JPanel();
+        titleLeft.setLayout(new BoxLayout(titleLeft, BoxLayout.Y_AXIS));
+        titleLeft.setOpaque(false);
+        titleLeft.add(lbl("Good Day, " + firstName(username) + " 👋", F_H1, TXT_H));
+        titleLeft.add(vgap(4));
+        titleLeft.add(lbl(hasSearch ? "Search results for: \"" + dashboardSearchQuery + "\"" : "Here's what's happening in your alumni network today.", F_BODY, TXT_S));
+        titleRow.add(titleLeft, BorderLayout.WEST);
+        content.add(titleRow);
+        content.add(vgap(24));
+
+        // Stat cards
+        JPanel stats = new JPanel(new GridLayout(1, 4, 14, 0));
+        stats.setOpaque(false);
+        stats.setMaximumSize(new Dimension(Integer.MAX_VALUE, 114));
+        stats.add(statCard("👥", "Total Alumni", String.valueOf(totalAlumni), "From database", ACCENT_I));
+        stats.add(statCard("🎓", "Students", String.valueOf(totalStudents), "Active students", ACCENT_B));
+        stats.add(statCard("💼", "Professionals", String.valueOf(totalProfessionals), "Alumni members", ACCENT_T));
+        stats.add(statCard("📨", "Unread Messages", String.valueOf(unreadMessages), "Current inbox", ACCENT_G));
+        content.add(stats);
+        content.add(vgap(24));
+
+        // Two columns
+        JPanel cols = new JPanel(new GridLayout(1, 2, 20, 0));
+        cols.setOpaque(false);
+
+        // Left col — Featured Alumni
+        JPanel leftCol = new JPanel();
+        leftCol.setLayout(new BoxLayout(leftCol, BoxLayout.Y_AXIS));
+        leftCol.setOpaque(false);
+
+        JPanel alumHead = rowPanel();
+        alumHead.add(lbl("Featured Alumni", F_H2, TXT_H));
+        alumHead.add(Box.createHorizontalGlue());
+        alumHead.add(glowBtn("View All →", ACCENT_I));
+        alumHead.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        leftCol.add(alumHead);
+        leftCol.add(vgap(12));
+
+        int rank = 1;
+        for (AlumniProfile p : profiles) {
+            if (p.getUserId() == currentUserId) continue;
+            String name = safe(p.getFullName(), "Unnamed");
+            String roleComp = safe(p.getJobRole(), "Member") + " · " + safe(p.getCompany(), "Unknown");
+            String skills = safe(p.getSkills(), "No skills listed");
+            String badge = "Student".equalsIgnoreCase(safe(p.getJobRole(), "")) ? "STUDENT" : "ALUMNI";
+            leftCol.add(alumCard(p.getUserId(), name, roleComp, skills, badge, "#" + rank));
+            leftCol.add(vgap(10));
+            if (++rank > 4) break;
+        }
+        if (rank == 1) leftCol.add(lbl("No alumni profiles available yet.", F_BODY, TXT_S));
+
+        // Right col — Company chart + Activity
+        JPanel rightCol = new JPanel();
+        rightCol.setLayout(new BoxLayout(rightCol, BoxLayout.Y_AXIS));
+        rightCol.setOpaque(false);
+
+        rightCol.add(lbl("Alumni by Company", F_H2, TXT_H));
+        rightCol.add(vgap(10));
+        rightCol.add(alumniCompanyChart(profiles));
+        rightCol.add(vgap(22));
+
+        rightCol.add(lbl("Live Activity Feed", F_H2, TXT_H));
+        rightCol.add(vgap(10));
+        int addedActivities = 0;
+        for (Notification n : filteredNotifications) {
+            rightCol.add(activityItem(n.getTypeIcon(), safe(n.getTitle(), "Untitled notice"), "just now"));
+            rightCol.add(vgap(6));
+            if (++addedActivities >= 6) break;
+        }
+        if (addedActivities == 0) {
+            rightCol.add(activityItem("ℹ", hasSearch ? "No activity matched your search." : "No recent activity found.", "now"));
+        }
+
+        cols.add(leftCol);
+        cols.add(rightCol);
+        content.add(cols);
+        outer.add(styledScroll(content), BorderLayout.CENTER);
+        return outer;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  PROFILE VIEW
+    // ═══════════════════════════════════════════════════════════
+    private JPanel buildProfileView() {
+        JPanel outer = new JPanel(new BorderLayout());
+        outer.setOpaque(false);
+
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(28, 30, 30, 30));
+
+        AlumniProfile profile = null;
+        try {
+            profile = AlumniDAO.getProfileByUserId(currentUserId);
+        } catch (Exception ignored) {
+        }
+        if (profile == null) {
+            profile = new AlumniProfile();
+            profile.setUserId(currentUserId);
+            profile.setFullName(username);
+        }
+
+        JPanel head = new JPanel(new BorderLayout(12, 0));
+        head.setOpaque(false);
+        head.setMaximumSize(new Dimension(Integer.MAX_VALUE, 64));
+        JPanel headLeft = new JPanel();
+        headLeft.setOpaque(false);
+        headLeft.setLayout(new BoxLayout(headLeft, BoxLayout.Y_AXIS));
+        headLeft.add(lbl("My Profile", F_H1, TXT_H));
+        headLeft.add(vgap(4));
+        headLeft.add(lbl("Company name and role", F_BODY, TXT_S));
+        head.add(headLeft, BorderLayout.WEST);
+        JButton editBtn = glowBtn("Edit Profile", ACCENT_I);
+        AlumniProfile finalProfile = profile;
+        editBtn.addActionListener(e -> {
+            ProfileEditDialog dialog = new ProfileEditDialog(this, currentUserId, username, finalProfile);
+            dialog.setVisible(true);
+            showView("PROFILE");
+        });
+        head.add(editBtn, BorderLayout.EAST);
+        content.add(head);
+        content.add(vgap(20));
+
+        // Profile hero card
+        JPanel heroCard = new JPanel(new BorderLayout(20, 0)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                GradientPaint gp = new GradientPaint(0, 0, new Color(22, 28, 58), getWidth(), 0, new Color(14, 20, 44));
+                g2.setPaint(gp);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setStroke(new BasicStroke(1f));
+                g2.setColor(new Color(99, 102, 241, 55));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        heroCard.setOpaque(false);
+        heroCard.setBorder(new EmptyBorder(24, 24, 24, 24));
+        heroCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+
+        JLabel avatar = new JLabel(new AvatarIcon(safe(profile.getFullName(), username), 72, ACCENT_I));
+        JPanel nameBlock = new JPanel();
+        nameBlock.setLayout(new BoxLayout(nameBlock, BoxLayout.Y_AXIS));
+        nameBlock.setOpaque(false);
+        nameBlock.add(lbl(safe(profile.getFullName(), username), new Font("Segoe UI", Font.BOLD, 22), TXT_H));
+        nameBlock.add(vgap(4));
+        nameBlock.add(lbl(safe(profile.getEmail(), "No email set"), F_BODY, TXT_S));
+        nameBlock.add(vgap(6));
+        nameBlock.add(lbl(safe(profile.getJobRole(), "Member") + " · " + safe(profile.getCompany(), "HSTU"), F_SMALL, ACCENT_T));
+        heroCard.add(avatar, BorderLayout.WEST);
+        heroCard.add(nameBlock, BorderLayout.CENTER);
+        JPanel heroNote = new JPanel();
+        heroNote.setOpaque(false);
+        heroNote.setLayout(new BoxLayout(heroNote, BoxLayout.Y_AXIS));
+        heroNote.add(lbl("Profile Summary", F_H3, TXT_S));
+        heroNote.add(vgap(4));
+        heroNote.add(lbl("Your company name and role are shown here for quick recognition and search.", F_SMALL, TXT_M));
+        heroCard.add(heroNote, BorderLayout.EAST);
+        content.add(heroCard);
+        content.add(vgap(20));
+
+        // Details card
+        JPanel detailCard = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(14, 19, 40));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setStroke(new BasicStroke(1f));
+                g2.setColor(BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        detailCard.setLayout(new BoxLayout(detailCard, BoxLayout.Y_AXIS));
+        detailCard.setOpaque(false);
+        detailCard.setBorder(new EmptyBorder(20, 24, 20, 24));
+        detailCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+
+        String gradYear = profile.getGraduationYear() <= 0 ? "Not set" : String.valueOf(profile.getGraduationYear());
+        detailCard.add(profileLine("Company Name", safe(profile.getCompany(), "Not set")));
+        detailCard.add(vgap(10));
+        detailCard.add(lineDivider());
+        detailCard.add(vgap(10));
+        detailCard.add(profileLine("Role", safe(profile.getJobRole(), "Not set")));
+        detailCard.add(vgap(10));
+        detailCard.add(lineDivider());
+        detailCard.add(vgap(10));
+        detailCard.add(profileLine("Graduation Year", gradYear));
+        detailCard.add(vgap(10));
+        detailCard.add(lineDivider());
+        detailCard.add(vgap(10));
+        detailCard.add(profileLine("Skills", safe(profile.getSkills(), "Not set")));
+        detailCard.add(vgap(10));
+        detailCard.add(lineDivider());
+        detailCard.add(vgap(10));
+        detailCard.add(profileLine("Bio", safe(profile.getBio(), "No bio yet")));
+        content.add(detailCard);
+
+        outer.add(styledScroll(content), BorderLayout.CENTER);
+        return outer;
+    }
+
+    private JComponent lineDivider() {
+        JPanel sep = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                g.setColor(new Color(50, 65, 100, 50));
+                g.fillRect(0, 0, getWidth(), 1);
+            }
+        };
+        sep.setOpaque(false);
+        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        sep.setPreferredSize(new Dimension(100, 1));
+        return sep;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  MESSAGES VIEW
+    // ═══════════════════════════════════════════════════════════
+    private JPanel buildMessagesView() {
+        JPanel outer = new JPanel(new BorderLayout());
+        outer.setOpaque(false);
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(28, 30, 30, 30));
+        content.add(lbl("Messages", F_H1, TXT_H));
+        content.add(vgap(6));
+        content.add(lbl("Your conversations with alumni members.", F_BODY, TXT_S));
+        content.add(vgap(18));
+
+        List<Integer> conversations = new ArrayList<>();
+        try {
+            conversations = AlumniDAO.getAllConversations(currentUserId);
+        } catch (Exception ignored) {
+        }
+
+        if (conversations.isEmpty()) {
+            content.add(lbl("No conversations found.", F_BODY, TXT_S));
+        } else {
+            for (Integer otherUserId : conversations) {
+                String otherName = safe(AlumniDAO.getFullNameById(otherUserId), "Member");
+                String preview = getConversationPreview(otherUserId);
+                String lastTime = getConversationTime(otherUserId);
+                JPanel conv = messageCard(otherName, preview, lastTime);
+                conv.addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        new ChatConversationFrame(currentUserId, username, otherUserId, otherName).setVisible(true);
+                    }
+                });
+                content.add(conv);
+                content.add(vgap(8));
+            }
+        }
+        outer.add(styledScroll(content), BorderLayout.CENTER);
+        return outer;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  NOTIFICATIONS VIEW
+    // ═══════════════════════════════════════════════════════════
+    private JPanel buildNotifView() {
+        JPanel outer = new JPanel(new BorderLayout());
+        outer.setOpaque(false);
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(28, 30, 30, 30));
+
+        JPanel head = rowPanel();
+        head.setAlignmentX(LEFT_ALIGNMENT);
+        head.setMaximumSize(new Dimension(Integer.MAX_VALUE, 72));
+        JPanel headText = new JPanel();
+        headText.setOpaque(false);
+        headText.setLayout(new BoxLayout(headText, BoxLayout.Y_AXIS));
+        headText.add(lbl("Notifications & Notice Board", F_H1, TXT_H));
+        headText.add(vgap(4));
+        headText.add(lbl("Latest jobs, events, and announcements from your alumni network.", F_BODY, TXT_S));
+        head.add(headText, BorderLayout.WEST);
+        JButton postBtn = glowBtn("+ Post Notice", ACCENT_G);
+        postBtn.setPreferredSize(new Dimension(140, 38));
+        postBtn.setMaximumSize(new Dimension(140, 38));
+        postBtn.addActionListener(e -> openPostNoticeDialog());
+        head.add(postBtn, BorderLayout.EAST);
+        content.add(head);
+        content.add(vgap(16));
+
+        List<Notification> notifications = new ArrayList<>();
+        try {
+            notifications = AlumniDAO.getAllNotifications(currentUserId);
+        } catch (Exception ignored) {
+        }
+
+        if (notifications.isEmpty()) {
+            content.add(lbl("No notices available.", F_BODY, TXT_S));
+        } else {
+            for (Notification n : notifications) {
+                JPanel item = notificationCard(n);
+                item.addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        AlumniDAO.markNotificationAsViewed(n.getNotificationId(), currentUserId);
+                        showView("NOTIFICATIONS");
+                    }
+                });
+                content.add(item);
+                content.add(vgap(10));
+            }
+        }
+        outer.add(styledScroll(content), BorderLayout.CENTER);
+        return outer;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  ACHIEVEMENTS VIEW
+    // ═══════════════════════════════════════════════════════════
+    private JPanel buildAchievementsView() {
+        JPanel outer = new JPanel(new BorderLayout());
+        outer.setOpaque(false);
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(28, 30, 30, 30));
+        content.add(lbl("Achievements Feed", F_H1, TXT_H));
+        content.add(vgap(6));
+        content.add(lbl("A social-style stream of alumni accomplishments.", new Font("Segoe UI", Font.PLAIN, 15), TXT_S));
+        content.add(vgap(20));
+
+        List<Achievement> achievements = new ArrayList<>();
+        try {
+            achievements = DatabaseConnection.getAchievements();
+        } catch (Exception ignored) {
+        }
+
+        if (achievements.isEmpty()) {
+            content.add(lbl("No achievements posted yet.", new Font("Segoe UI", Font.PLAIN, 18), TXT_S));
+            content.add(vgap(8));
+            content.add(lbl("New posts will appear here like a social feed.", new Font("Segoe UI", Font.PLAIN, 14), TXT_M));
+        } else {
+            for (int i = achievements.size() - 1; i >= 0; i--) {
+                content.add(achievementFeedCard(achievements.get(i)));
+                content.add(vgap(14));
+            }
+        }
+        outer.add(styledScroll(content), BorderLayout.CENTER);
+        return outer;
+    }
+
+    private JPanel achievementFeedCard(Achievement achievement) {
+        JPanel card = new JPanel(new BorderLayout(18, 0)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(14, 19, 40, 235));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(new Color(80, 100, 150, 80));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(20, 20, 16, 20));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
+        card.setAlignmentX(LEFT_ALIGNMENT);
+
+        JPanel mediaWrap = new JPanel(new BorderLayout()) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(18, 23, 40));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.setColor(new Color(80, 100, 150, 70));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        mediaWrap.setOpaque(false);
+        mediaWrap.setPreferredSize(new Dimension(270, 180));
+        mediaWrap.setMinimumSize(new Dimension(270, 180));
+        mediaWrap.setMaximumSize(new Dimension(270, 180));
+
+        String photoPath = safe(achievement.getPhotoPath(), "");
+        if (!photoPath.isEmpty() && new File(photoPath).exists()) {
+            ImageIcon raw = new ImageIcon(photoPath);
+            Image scaled = raw.getImage().getScaledInstance(270, 180, Image.SCALE_SMOOTH);
+            JLabel img = new JLabel(new ImageIcon(scaled));
+            img.setHorizontalAlignment(SwingConstants.CENTER);
+            mediaWrap.add(img, BorderLayout.CENTER);
+        } else {
+            JLabel placeholder = new JLabel("No Photo", SwingConstants.CENTER);
+            placeholder.setFont(new Font("Segoe UI", Font.BOLD, 16));
+            placeholder.setForeground(TXT_S);
+            mediaWrap.add(placeholder, BorderLayout.CENTER);
+        }
+
+        JPanel body = new JPanel();
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.setOpaque(false);
+
+        JPanel header = new JPanel(new BorderLayout(10, 0));
+        header.setOpaque(false);
+        header.setAlignmentX(LEFT_ALIGNMENT);
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 56));
+        String postAuthor = "Alumni Network";
+        JLabel avatar = new JLabel(new AvatarIcon(postAuthor, 46, ACCENT_B));
+        header.add(avatar, BorderLayout.WEST);
+        JPanel meta = new JPanel();
+        meta.setLayout(new BoxLayout(meta, BoxLayout.Y_AXIS));
+        meta.setOpaque(false);
+        meta.add(lbl(postAuthor, new Font("Segoe UI", Font.BOLD, 15), TXT_H));
+        meta.add(vgap(2));
+        meta.add(lbl(safe(achievement.getUploadDate(), "just now") + " · Public", new Font("Segoe UI", Font.PLAIN, 12), TXT_M));
+        header.add(meta, BorderLayout.CENTER);
+        body.add(header);
+        body.add(vgap(12));
+
+        JTextArea titleArea = new JTextArea(safe(achievement.getTitle(), "Achievement"));
+        titleArea.setLineWrap(true);
+        titleArea.setWrapStyleWord(true);
+        titleArea.setEditable(false);
+        titleArea.setOpaque(false);
+        titleArea.setForeground(TXT_H);
+        titleArea.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        titleArea.setBorder(null);
+        titleArea.setMargin(new Insets(0, 0, 0, 0));
+        body.add(titleArea);
+        body.add(vgap(8));
+
+        JTextArea desc = new JTextArea(safe(achievement.getDescription(), ""));
+        desc.setLineWrap(true);
+        desc.setWrapStyleWord(true);
+        desc.setEditable(false);
+        desc.setOpaque(false);
+        desc.setForeground(new Color(210, 220, 238));
+        desc.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        desc.setMargin(new Insets(0, 0, 0, 0));
+        body.add(desc);
+
+        body.add(vgap(14));
+
+        JPanel metaRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        metaRow.setOpaque(false);
+        metaRow.setAlignmentX(LEFT_ALIGNMENT);
+        metaRow.add(chipLabel("Posted: " + safe(achievement.getUploadDate(), "just now"), new Color(20, 26, 50), ACCENT_B));
+        metaRow.add(chipLabel("Public", new Color(20, 26, 50), ACCENT_G));
+        body.add(metaRow);
+
+        card.add(mediaWrap, BorderLayout.WEST);
+        card.add(body, BorderLayout.CENTER);
+        return card;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  ANALYTICS VIEW
+    // ═══════════════════════════════════════════════════════════
+    private JPanel buildAnalyticsView() {
+        JPanel outer = new JPanel(new BorderLayout());
+        outer.setOpaque(false);
+
+        List<Notification> notifications = new ArrayList<>();
+        int totalAlumni = 0, totalStudents = 0, totalProfessionals = 0;
+        int unreadMessages = 0, unreadAlerts = 0, conversations = 0;
+        int jobs = 0, events = 0, announcements = 0;
+        try {
+            notifications = AlumniDAO.getAllNotifications(currentUserId);
+            totalAlumni = AlumniDAO.getTotalProfileCount();
+            totalStudents = AlumniDAO.getStudentCount();
+            totalProfessionals = Math.max(0, totalAlumni - totalStudents);
+            unreadMessages = AlumniDAO.getUnreadMessageCount(currentUserId);
+            unreadAlerts = AlumniDAO.getUnreadNotificationCount(currentUserId);
+            conversations = AlumniDAO.getAllConversations(currentUserId).size();
+        } catch (Exception ignored) {
+        }
+
+        for (Notification n : notifications) {
+            if (n == null || n.getType() == null) continue;
+            if (n.isJobPosting())
+                jobs++;
+            else if (n.isEvent())
+                events++;
+            else
+                announcements++;
+        }
+
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(28, 30, 30, 30));
+
+        content.add(lbl("Analytics", F_H1, TXT_H));
+        content.add(vgap(4));
+        content.add(lbl("Live snapshot from your database records", F_BODY, TXT_S));
+        content.add(vgap(22));
+
+        JPanel topStats = new JPanel(new GridLayout(1, 4, 14, 0));
+        topStats.setOpaque(false);
+        topStats.setMaximumSize(new Dimension(Integer.MAX_VALUE, 114));
+        topStats.add(statCard("👥", "Alumni", String.valueOf(totalAlumni), "Total profiles", ACCENT_I));
+        topStats.add(statCard("🎓", "Students", String.valueOf(totalStudents), "Current students", ACCENT_B));
+        topStats.add(statCard("💼", "Professionals", String.valueOf(totalProfessionals), "Career profiles", ACCENT_T));
+        topStats.add(statCard("🔔", "Unread Alerts", String.valueOf(unreadAlerts), "Need attention", ACCENT_O));
+        content.add(topStats);
+        content.add(vgap(22));
+
+        JPanel split = new JPanel(new GridLayout(1, 2, 16, 0));
+        split.setOpaque(false);
+        split.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
+
+        JPanel dist = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(14, 19, 40));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        dist.setLayout(new BoxLayout(dist, BoxLayout.Y_AXIS));
+        dist.setOpaque(false);
+        dist.setBorder(new EmptyBorder(18, 20, 18, 20));
+        dist.add(lbl("Notice Distribution", F_H2, TXT_H));
+        dist.add(vgap(14));
+        dist.add(metricBar("Job Posts", jobs, ACCENT_B));
+        dist.add(vgap(10));
+        dist.add(metricBar("Events", events, ACCENT_G));
+        dist.add(vgap(10));
+        dist.add(metricBar("Announcements", announcements, ACCENT_P));
+
+        JPanel commHealth = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(14, 19, 40));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        commHealth.setLayout(new BoxLayout(commHealth, BoxLayout.Y_AXIS));
+        commHealth.setOpaque(false);
+        commHealth.setBorder(new EmptyBorder(18, 20, 18, 20));
+        commHealth.add(lbl("Communication Health", F_H2, TXT_H));
+        commHealth.add(vgap(14));
+        commHealth.add(profileLine("Active Conversations", String.valueOf(conversations)));
+        commHealth.add(vgap(10));
+        commHealth.add(lineDivider());
+        commHealth.add(vgap(10));
+        commHealth.add(profileLine("Unread Messages", String.valueOf(unreadMessages)));
+        commHealth.add(vgap(10));
+        commHealth.add(lineDivider());
+        commHealth.add(vgap(10));
+        commHealth.add(profileLine("Total Notices", String.valueOf(notifications.size())));
+        commHealth.add(vgap(10));
+        commHealth.add(lineDivider());
+        commHealth.add(vgap(10));
+        commHealth.add(lbl("Tip: keep unread counts low for engagement.", F_SMALL, TXT_M));
+
+        split.add(dist);
+        split.add(commHealth);
+        content.add(split);
+        content.add(vgap(22));
+
+        content.add(lbl("Recent Notice Activity", F_H2, TXT_H));
+        content.add(vgap(12));
+        if (notifications.isEmpty()) {
+            content.add(lbl("No recent notice activity found.", F_BODY, TXT_S));
+        } else {
+            int shown = 0;
+            for (Notification n : notifications) {
+                content.add(actionRow(n.getTypeIcon(), safe(n.getTitle(), "Untitled notice"), "just now"));
+                content.add(vgap(6));
+                if (++shown >= 6) break;
+            }
+        }
+        outer.add(styledScroll(content), BorderLayout.CENTER);
+        return outer;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  HELPER COMPONENTS & UI UTILS
+    // ═══════════════════════════════════════════════════════════
+
+    private JPanel statCard(String icon, String label, String value, String sub, Color accent) {
+        JPanel card = new JPanel() {
+            boolean hovered = false;
+            float hov = 0f;
+            Timer t = new Timer(16, null);
+            {
+                t.addActionListener(e -> {
+                    float target = hovered ? 1f : 0f;
+                    hov += (target - hov) * 0.15f;
+                    if (Math.abs(hov - target) < 0.01f) {
+                        hov = target;
+                        t.stop();
+                    }
+                    repaint();
+                });
+                addMouseListener(new MouseAdapter() {
+                    public void mouseEntered(MouseEvent e) {
+                        hovered = true;
+                        t.start();
+                    }
+                    public void mouseExited(MouseEvent e) {
+                        hovered = false;
+                        t.start();
+                    }
+                });
+            }
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(interp(CARD, CARD_HOV, hov));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                int glowA = (int) (hov * 140);
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 30 + glowA));
+                g2.setStroke(new BasicStroke(1f));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                GradientPaint gp = new GradientPaint(0, 0, new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 180),
+                    getWidth(), 0, new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 0));
+                g2.setPaint(gp);
+                g2.fillRoundRect(0, 0, getWidth(), 4, 16, 16);
+                g2.fillRect(0, 3, getWidth(), 1);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+
+        card.setLayout(new BorderLayout(0, 0));
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(18, 20, 18, 20));
+        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        JPanel left = new JPanel();
+        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
+        left.setOpaque(false);
+        left.add(lbl(value, new Font("Inter", Font.BOLD, 32), TXT_H));
+        left.add(vgap(4));
+        left.add(lbl(label, F_H3, TXT_S));
+        left.add(vgap(6));
+        left.add(lbl(sub, F_SMALL, new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 180)));
+
+        JLabel iconLbl = new JLabel(icon) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 25));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        iconLbl.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 26));
+        iconLbl.setHorizontalAlignment(SwingConstants.CENTER);
+        iconLbl.setPreferredSize(new Dimension(54, 54));
+
+        card.add(left, BorderLayout.CENTER);
+        card.add(iconLbl, BorderLayout.EAST);
+        return card;
+    }
+
+    private JPanel alumCard(int userId, String name, String roleComp, String skills, String badge, String rank) {
+        JPanel card = new JPanel(new BorderLayout(16, 0)) {
+            boolean hovered = false;
+            float hov = 0f;
+            Timer t = new Timer(16, null);
+            {
+                t.addActionListener(e -> {
+                    float target = hovered ? 1f : 0f;
+                    hov += (target - hov) * 0.18f;
+                    if (Math.abs(hov - target) < 0.01f) {
+                        hov = target;
+                        t.stop();
+                    }
+                    repaint();
+                });
+                addMouseListener(new MouseAdapter() {
+                    public void mouseEntered(MouseEvent e) {
+                        hovered = true;
+                        t.start();
+                    }
+                    public void mouseExited(MouseEvent e) {
+                        hovered = false;
+                        t.start();
+                    }
+                });
+            }
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(interp(CARD, CARD_HOV, hov));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                int ba = (int) (30 + hov * 60);
+                g2.setColor(new Color(ACCENT_I.getRed(), ACCENT_I.getGreen(), ACCENT_I.getBlue(), ba));
+                g2.setStroke(new BasicStroke(1f));
                 g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         card.setOpaque(false);
-        card.setBackground(new Color(28, 33, 52));
-        card.setBorder(new EmptyBorder(22, 25, 22, 25));
-        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        card.setBorder(new EmptyBorder(16, 20, 16, 20));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 98));
+        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        JLabel rankLbl = new JLabel(rank);
+        rankLbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        rankLbl.setForeground(ACCENT_O);
+        rankLbl.setBorder(new EmptyBorder(4, 8, 4, 8));
+
+        Color av = "STUDENT".equals(badge) ? ACCENT_B : ACCENT_T;
+        JLabel avatar = new JLabel(new AvatarIcon(name, 52, av));
+
+        JPanel info = new JPanel();
+        info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
+        info.setOpaque(false);
+        info.add(lbl(name, new Font("Segoe UI", Font.BOLD, 15), TXT_H));
+        info.add(vgap(3));
+        info.add(lbl(roleComp, F_SMALL, TXT_S));
+        info.add(vgap(6));
+
+        JPanel tags = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        tags.setOpaque(false);
+        String[] sk = skills.split(", ");
+        int max = Math.min(sk.length, 3);
+        for (int i = 0; i < max; i++) tags.add(miniTag(sk[i]));
+        info.add(tags);
+
+        JPanel right = new JPanel(new GridLayout(3, 1, 0, 6));
+        right.setOpaque(false);
+        right.add(rankLbl);
+        right.add(tinyBtn("Message", ACCENT_B, () -> openConversationWith(userId, name)));
+        right.add(tinyBtn("Profile", ACCENT_I, () -> showAlumniProfilePreview(userId, name)));
+
+        card.add(avatar, BorderLayout.WEST);
+        card.add(info, BorderLayout.CENTER);
+        card.add(right, BorderLayout.EAST);
         return card;
     }
 
-    private void addProfileDetailRow(JPanel parent, String label, String value) {
-        JPanel row = new JPanel(new BorderLayout(20, 0)) {
+    private JPanel activityItem(String dot, String text, String time) {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        left.setOpaque(false);
+        left.add(lbl(dot, new Font("Segoe UI Emoji", Font.PLAIN, 14), TXT_H));
+        left.add(lbl(text, F_BODY, TXT_S));
+
+        row.add(left, BorderLayout.CENTER);
+        row.add(lbl(time, F_SMALL, TXT_M), BorderLayout.EAST);
+
+        JPanel wrap = new JPanel();
+        wrap.setLayout(new BoxLayout(wrap, BoxLayout.Y_AXIS));
+        wrap.setOpaque(false);
+        wrap.add(row);
+        JSeparator sep = new JSeparator();
+        sep.setForeground(BORDER);
+        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        wrap.add(sep);
+        return wrap;
+    }
+
+    private JPanel profileLine(String key, String value) {
+        JPanel line = new JPanel(new BorderLayout(16, 0));
+        line.setOpaque(false);
+        JLabel k = lbl(key, F_H3, TXT_M);
+        k.setPreferredSize(new Dimension(140, 24));
+        line.add(k, BorderLayout.WEST);
+        line.add(lbl(value, F_BODY, TXT_S), BorderLayout.CENTER);
+        return line;
+    }
+
+    private JPanel messageCard(String name, String preview, String time) {
+        JPanel row = new JPanel(new BorderLayout(16, 0)) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(38, 44, 68));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-                // Left accent stripe
-                g2.setColor(new Color(99, 102, 241, 180));
-                g2.fillRoundRect(0, 0, 4, getHeight(), 4, 4);
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(CARD);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.setColor(BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         row.setOpaque(false);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-        row.setBorder(new EmptyBorder(10, 16, 10, 16));
+        row.setBorder(new EmptyBorder(16, 20, 16, 20));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 86));
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        JLabel labelComp = new JLabel(label);
-        labelComp.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        labelComp.setForeground(new Color(150, 175, 240));
-        labelComp.setPreferredSize(new Dimension(175, 28));
+        JLabel avatar = new JLabel(new AvatarIcon(name, 44, ACCENT_B));
+        row.add(avatar, BorderLayout.WEST);
 
-        JLabel valueComp =
-            new JLabel((value == null || value.isBlank() || value.equals("Not specified") || value.equals("0"))
-                    ? "Not set"
-                    : value);
-        valueComp.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        valueComp.setForeground(Color.WHITE);
+        JPanel middle = new JPanel();
+        middle.setLayout(new BoxLayout(middle, BoxLayout.Y_AXIS));
+        middle.setOpaque(false);
+        middle.add(lbl(name, new Font("Segoe UI", Font.BOLD, 15), TXT_H));
+        middle.add(vgap(4));
+        middle.add(lbl(preview, F_BODY, TXT_S));
+        row.add(middle, BorderLayout.CENTER);
 
-        row.add(labelComp, BorderLayout.WEST);
-        row.add(valueComp, BorderLayout.CENTER);
-
-        parent.add(row);
-        parent.add(Box.createVerticalStrut(8));
+        row.add(lbl(time, F_SMALL, TXT_M), BorderLayout.EAST);
+        return row;
     }
 
-    private void editProfile(AlumniProfile profile) {
-        ProfileEditDialog dialog =
-            new ProfileEditDialog(this, currentUserId, currentUsername, profile);
-        dialog.setVisible(true);
-        loadProfileData(); // Reload profile view
-        refreshSidebarAvatar(); // Refresh sidebar photo
-    }
-
-    /**
-     * Update the sidebar bottom‑left avatar after a profile picture change.
-     */
-    private void refreshSidebarAvatar() {
-        if (sidebarUserAvatar == null)
-            return;
-        AlumniProfile p = AlumniDAO.getProfileByUserId(currentUserId);
-        String pic = p != null ? p.getProfilePicturePath() : null;
-        if (pic != null && !pic.isEmpty() && new java.io.File(pic).exists()) {
-            sidebarUserAvatar.setIcon(new CircularImageIcon(pic, 42));
-        } else {
-            sidebarUserAvatar.setIcon(
-                new AvatarIcon(currentUsername, 42, PRIMARY_BLUE));
-        }
-        sidebarUserAvatar.revalidate();
-        sidebarUserAvatar.repaint();
-    }
-
-    // ==========================================
-    // MESSAGES VIEW
-    // ==========================================
-    private JPanel createMessagesView() {
-        JPanel view = new JPanel(new BorderLayout());
-        view.setBackground(MAIN_BG);
-
-        JPanel messagesContent = new JPanel();
-        messagesContent.setLayout(new BoxLayout(messagesContent, BoxLayout.Y_AXIS));
-        messagesContent.setBackground(MAIN_BG);
-        messagesContent.setBorder(new EmptyBorder(35, 35, 35, 35));
-
-        JScrollPane scrollPane = createStyledScrollPane(messagesContent);
-        view.add(scrollPane, BorderLayout.CENTER);
-
-        return view;
-    }
-
-    private void loadMessagesData() {
-        JPanel messagesContent =
-            (JPanel) ((JScrollPane) ((JPanel) mainContentArea.getComponent(2))
-                          .getComponent(0))
-                .getViewport()
-                .getView();
-        messagesContent.removeAll();
-
-        JLabel titleLabel = new JLabel("💬 My Conversations");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        messagesContent.add(titleLabel);
-        messagesContent.add(Box.createVerticalStrut(20));
-
-        List<Integer> conversations = AlumniDAO.getAllConversations(currentUserId);
-
-        if (conversations.isEmpty()) {
-            JPanel emptyCard = createCard();
-            emptyCard.setLayout(new BoxLayout(emptyCard, BoxLayout.Y_AXIS));
-
-            JLabel icon = new JLabel("💬");
-            icon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 64));
-            icon.setAlignmentX(Component.CENTER_ALIGNMENT);
-            emptyCard.add(icon);
-
-            emptyCard.add(Box.createVerticalStrut(15));
-            JLabel text = new JLabel("No conversations yet");
-            text.setFont(new Font("Segoe UI", Font.BOLD, 18));
-            text.setForeground(TEXT_GRAY);
-            text.setAlignmentX(Component.CENTER_ALIGNMENT);
-            emptyCard.add(text);
-
-            JLabel subtext =
-                new JLabel("Start chatting with alumni from the dashboard");
-            subtext.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-            subtext.setForeground(TEXT_GRAY);
-            subtext.setAlignmentX(Component.CENTER_ALIGNMENT);
-            emptyCard.add(Box.createVerticalStrut(10));
-            emptyCard.add(subtext);
-
-            messagesContent.add(emptyCard);
-        } else {
-            for (int otherUserId : conversations) {
-                String otherUsername = AlumniDAO.getFullNameById(otherUserId);
-                JPanel convCard = createConversationCard(otherUserId, otherUsername);
-                messagesContent.add(convCard);
-                messagesContent.add(Box.createVerticalStrut(15));
-            }
-        }
-
-        messagesContent.revalidate();
-        messagesContent.repaint();
-    }
-
-    private JPanel createConversationCard(int otherUserId, String otherUsername) {
-        JPanel card = createCard();
-        card.setLayout(new BorderLayout(15, 0));
-        card.setCursor(new Cursor(Cursor.HAND_CURSOR));
-
-        JLabel avatar = new JLabel(new AvatarIcon(otherUsername, 50, PRIMARY_BLUE));
-
-        JPanel infoPanel = new JPanel();
-        infoPanel.setLayout(new BoxLayout(infoPanel, BoxLayout.Y_AXIS));
-        infoPanel.setBackground(new Color(28, 33, 52));
-
-        JLabel nameLabel = new JLabel(otherUsername);
-        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel previewLabel = new JLabel("Click to open conversation");
-        previewLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        previewLabel.setForeground(TEXT_GRAY);
-        previewLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        infoPanel.add(nameLabel);
-        infoPanel.add(Box.createVerticalStrut(5));
-        infoPanel.add(previewLabel);
-
-        JButton openBtn = createModernButton("Open", PRIMARY_BLUE);
-        openBtn.setPreferredSize(new Dimension(100, 40));
-
-        card.add(avatar, BorderLayout.WEST);
-        card.add(infoPanel, BorderLayout.CENTER);
-        card.add(openBtn, BorderLayout.EAST);
-
-        card.addMouseListener(new MouseAdapter() {
+    private JPanel notificationCard(Notification n) {
+        JPanel card = new JPanel(new BorderLayout()) {
             @Override
-            public void mouseClicked(MouseEvent e) {
-                openConversation(otherUserId, otherUsername);
-            }
-        });
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color base = n.isViewed() ? new Color(14, 19, 40) : new Color(20, 26, 54);
+                g2.setColor(base);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(new Color(72, 88, 132, 85));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
 
-        openBtn.addActionListener(
-            e -> openConversation(otherUserId, otherUsername));
-
-        return card;
-    }
-
-    private void openConversation(int otherUserId, String otherUsername) {
-        ChatConversationFrame chat = new ChatConversationFrame(
-            currentUserId, currentUsername, otherUserId, otherUsername);
-        chat.setVisible(true);
-    }
-
-    // ==========================================
-    // NOTIFICATIONS VIEW
-    // ==========================================
-    private JPanel createNotificationsView() {
-        JPanel view = new JPanel(new BorderLayout());
-        view.setBackground(MAIN_BG);
-
-        // Header with Post button
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setBackground(new Color(18, 22, 36));
-        headerPanel.setBorder(new EmptyBorder(20, 30, 20, 30));
-
-        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        titlePanel.setOpaque(false);
-        JLabel titleLabel = new JLabel("🔔 Notice Board");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        titlePanel.add(titleLabel);
-
-        headerPanel.add(titlePanel, BorderLayout.WEST);
-        JPanel actionBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        actionBtns.setOpaque(false);
-
-        // Admin-only controls remain visible for admins.
-        if (currentUserIsAdmin) {
-            int pendingDonations = AlumniDAO.getPendingDonationCount();
-            if (pendingDonations > 0) {
-                JButton donBadge =
-                    createModernButton("💰 " + pendingDonations + " Pending Donation" + (pendingDonations > 1 ? "s" : ""),
-                        new Color(245, 158, 11));
-                donBadge.addActionListener(e -> {
-                    AdminControlPanel acp = new AdminControlPanel(this);
-                    acp.setVisible(true);
-                });
-                actionBtns.add(donBadge);
-            }
-        }
-
-        JButton communityPostBtn =
-            createModernButton("+ Community Post", new Color(46, 204, 113));
-        communityPostBtn.addActionListener(e -> showPostNotificationDialog());
-        actionBtns.add(communityPostBtn);
-
-        JButton refreshNoticesBtn = createModernButton("↻ Refresh", PRIMARY_BLUE);
-        refreshNoticesBtn.addActionListener(e -> refreshNotificationsView());
-        actionBtns.add(refreshNoticesBtn);
-        headerPanel.add(actionBtns, BorderLayout.EAST);
-        view.add(headerPanel, BorderLayout.NORTH);
-
-        // Notifications list
-        JPanel notificationsPanel = new JPanel();
-        notificationsPanel.setLayout(
-            new BoxLayout(notificationsPanel, BoxLayout.Y_AXIS));
-        notificationsPanel.setBackground(MAIN_BG);
-        notificationsPanel.setBorder(new EmptyBorder(20, 30, 20, 30));
-        notificationsListPanel = notificationsPanel;
-
-        // Load notifications
-        loadNotifications(notificationsPanel);
-
-        JScrollPane scrollPane = new JScrollPane(notificationsPanel);
-        scrollPane.setBorder(null);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        view.add(scrollPane, BorderLayout.CENTER);
-
-        return view;
-    }
-
-    private void loadNotifications(JPanel container) {
-        container.removeAll();
-
-        JPanel infoPanel = new JPanel(new BorderLayout());
-        infoPanel.setBackground(new Color(20, 26, 42));
-        infoPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(60, 70, 110), 1, true),
-            new EmptyBorder(12, 14, 12, 14)));
-        infoPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 72));
-
-        JLabel infoLabel = new JLabel(
-            "Community Board is open for everyone: share industry updates, jobs, and alumni opportunities.");
-        infoLabel.setForeground(new Color(199, 210, 254));
-        infoLabel.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        infoPanel.add(infoLabel, BorderLayout.CENTER);
-
-        JButton quickPostBtn = createModernButton("Post Now", PRIMARY_BLUE);
-        quickPostBtn.addActionListener(e -> showPostNotificationDialog());
-        infoPanel.add(quickPostBtn, BorderLayout.EAST);
-
-        container.add(infoPanel);
-        container.add(Box.createVerticalStrut(15));
-
-        List<Notification> notifications =
-            AlumniDAO.getAllNotifications(currentUserId);
-
-        if (notifications.isEmpty()) {
-            JPanel emptyPanel = new JPanel();
-            emptyPanel.setLayout(new BoxLayout(emptyPanel, BoxLayout.Y_AXIS));
-            emptyPanel.setBackground(MAIN_BG);
-            emptyPanel.setBorder(new EmptyBorder(50, 0, 50, 0));
-
-            JLabel emptyIcon = new JLabel("📭");
-            emptyIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 64));
-            emptyIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-            JLabel emptyLabel = new JLabel("No notices yet");
-            emptyLabel.setFont(new Font("Segoe UI", Font.PLAIN, 18));
-            emptyLabel.setForeground(TEXT_GRAY);
-            emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-            JLabel tipLabel = new JLabel("Click 'Post Now' to create one");
-            tipLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-            tipLabel.setForeground(TEXT_GRAY);
-            tipLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-            emptyPanel.add(emptyIcon);
-            emptyPanel.add(Box.createVerticalStrut(15));
-            emptyPanel.add(emptyLabel);
-            emptyPanel.add(Box.createVerticalStrut(5));
-            emptyPanel.add(tipLabel);
-
-            container.add(emptyPanel);
-        } else {
-            for (Notification notif : notifications) {
-                container.add(createNotificationCard(notif));
-                container.add(Box.createVerticalStrut(15));
-            }
-        }
-
-        container.revalidate();
-        container.repaint();
-    }
-
-    private JPanel createNotificationCard(Notification notif) {
-        JPanel card = new JPanel(new BorderLayout(15, 15));
-        Color cardBg = notif.isViewed() ? new Color(26, 33, 52)
-                                        : new Color(34, 45, 74);
-        Color cardBorder = notif.isViewed() ? new Color(60, 76, 120)
-                                            : new Color(88, 117, 186);
-        card.setBackground(cardBg);
-        card.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(cardBorder, 2, true),
-            new EmptyBorder(20, 20, 20, 20)));
-        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 600));
-
-        // Left: Icon
-        JPanel iconPanel = new JPanel();
-        iconPanel.setOpaque(false);
-        JLabel iconLabel = new JLabel(notif.getTypeIcon());
-        iconLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 40));
-        iconPanel.add(iconLabel);
-        card.add(iconPanel, BorderLayout.WEST);
-
-        // Center: Content
-        JPanel contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setOpaque(false);
-
-        // Title with priority badge
-        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        titlePanel.setOpaque(false);
-
-        JLabel titleLabel = new JLabel(notif.getTitle());
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        titleLabel.setForeground(new Color(245, 247, 255));
-        titlePanel.add(titleLabel);
-
-        if (!notif.getPriorityBadge().isEmpty()) {
-            JLabel priorityLabel = new JLabel(" " + notif.getPriorityBadge());
-            priorityLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-            priorityLabel.setForeground(Color.RED);
-            titlePanel.add(priorityLabel);
-        }
-
-        contentPanel.add(titlePanel);
-        contentPanel.add(Box.createVerticalStrut(8));
-
-        // Posted by
-        JLabel postedByLabel =
-            new JLabel("Posted by: " + notif.getPostedByName() + (notif.getPosterCompany() != null ? " (" + notif.getPosterCompany() + ")" : ""));
-        postedByLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        postedByLabel.setForeground(new Color(180, 198, 236));
-        contentPanel.add(postedByLabel);
-        contentPanel.add(Box.createVerticalStrut(10));
-
-        // Content
-        JTextArea contentArea = new JTextArea(notif.getContent());
-        contentArea.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        contentArea.setLineWrap(true);
-        contentArea.setWrapStyleWord(true);
-        contentArea.setEditable(false);
-        contentArea.setOpaque(false);
-        contentArea.setForeground(new Color(232, 238, 255));
-        contentArea.setCaretColor(new Color(232, 238, 255));
-        contentArea.setRows(2);
-        contentPanel.add(contentArea);
-        contentPanel.add(Box.createVerticalStrut(10));
-
-        // Job posting details
-        if (notif.isJobPosting()) {
-            JPanel jobDetailsPanel = new JPanel(new GridLayout(0, 2, 10, 5));
-            jobDetailsPanel.setOpaque(false);
-
-            if (notif.getCompanyName() != null) {
-                addDetailLabel(jobDetailsPanel, "🏢 Company:", notif.getCompanyName());
-            }
-            if (notif.getJobPosition() != null) {
-                addDetailLabel(jobDetailsPanel, "💼 Position:", notif.getJobPosition());
-            }
-            if (notif.getJobLocation() != null) {
-                addDetailLabel(jobDetailsPanel, "📍 Location:", notif.getJobLocation());
-            }
-            if (notif.getJobType() != null) {
-                addDetailLabel(jobDetailsPanel, "⏰ Type:", notif.getJobType());
-            }
-            if (notif.getSalaryRange() != null) {
-                addDetailLabel(jobDetailsPanel, "💰 Salary:", notif.getSalaryRange());
-            }
-            if (notif.getApplicationDeadline() != null) {
-                addDetailLabel(jobDetailsPanel,
-                    "📅 Deadline:", notif.getApplicationDeadline());
-            }
-
-            contentPanel.add(jobDetailsPanel);
-            contentPanel.add(Box.createVerticalStrut(10));
-
-            if (notif.getApplicationUrl() != null && !notif.getApplicationUrl().isEmpty()) {
-                JButton applyBtn = createModernButton("Apply Now →", PRIMARY_BLUE);
-                applyBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-                applyBtn.addActionListener(e -> {
-                    try {
-                        Desktop.getDesktop().browse(
-                            new java.net.URI(notif.getApplicationUrl()));
-                    } catch (Exception ex) {
-                        JOptionPane.showMessageDialog(card, "Application URL: " + notif.getApplicationUrl());
-                    }
-                });
-                contentPanel.add(applyBtn);
-            }
-        }
-
-        // Event details
-        if (notif.isEvent()) {
-            JPanel eventDetailsPanel = new JPanel();
-            eventDetailsPanel.setLayout(
-                new BoxLayout(eventDetailsPanel, BoxLayout.Y_AXIS));
-            eventDetailsPanel.setOpaque(false);
-
-            if (notif.getEventDate() != null) {
-                JLabel dateLabel =
-                    new JLabel("📅 Date: " + notif.getEventDate().toString());
-                dateLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-                dateLabel.setForeground(new Color(220, 230, 255));
-                eventDetailsPanel.add(dateLabel);
-            }
-            if (notif.getEventLocation() != null) {
-                JLabel locLabel = new JLabel("📍 Location: " + notif.getEventLocation());
-                locLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-                locLabel.setForeground(new Color(220, 230, 255));
-                eventDetailsPanel.add(locLabel);
-            }
-
-            contentPanel.add(eventDetailsPanel);
-
-            // ── Donation section ─────────────────────────────────────────────────
-            if (notif.isDonationsEnabled()) {
-                contentPanel.add(Box.createVerticalStrut(12));
-                contentPanel.add(buildDonationPanel(card, notif));
-            }
-        }
-
-        // Timestamp
-        contentPanel.add(Box.createVerticalStrut(10));
-        JLabel timeLabel = new JLabel(getTimeAgo(notif.getCreatedAt()));
-        timeLabel.setFont(new Font("Segoe UI", Font.ITALIC, 16));
-        timeLabel.setForeground(new Color(158, 180, 226));
-        contentPanel.add(timeLabel);
-
-        card.add(contentPanel, BorderLayout.CENTER);
-
-        // Mark as viewed when clicked
-        card.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (!notif.isViewed()) {
-                    AlumniDAO.markNotificationAsViewed(notif.getNotificationId(),
-                        currentUserId);
-                    card.setBackground(new Color(26, 33, 52));
+                if (!n.isViewed()) {
+                    g2.setColor(ACCENT_I);
+                    g2.fillOval(16, 24, 8, 8);
                 }
-            }
-        });
-
-        return card;
-    }
-
-    private void addDetailLabel(JPanel panel, String label, String value) {
-        JLabel lbl = new JLabel(label);
-        lbl.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        lbl.setForeground(new Color(155, 182, 246));
-        JLabel val = new JLabel(value);
-        val.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        val.setForeground(new Color(235, 240, 255));
-        panel.add(lbl);
-        panel.add(val);
-    }
-
-    // ── DONATION PANEL (shown inside event notification cards) ───────────────
-    private JPanel buildDonationPanel(JPanel card, Notification notif) {
-        JPanel donPanel = new JPanel();
-        donPanel.setLayout(new BoxLayout(donPanel, BoxLayout.Y_AXIS));
-        donPanel.setBackground(new Color(240, 253, 244)); // light green tint
-        donPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(134, 239, 172), 2, true),
-            BorderFactory.createEmptyBorder(12, 14, 12, 14)));
-        donPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        donPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200));
-
-        // Title row
-        JLabel donTitle = new JLabel("💰  Event Donation Fund");
-        donTitle.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        donTitle.setForeground(new Color(21, 128, 61));
-        donTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-        donPanel.add(donTitle);
-        donPanel.add(Box.createVerticalStrut(8));
-
-        // Progress info
-        double goal = notif.getDonationGoal();
-        double raised = notif.getDonationRaised();
-
-        if (goal > 0) {
-            int pct = (int) Math.min(100, raised / goal * 100);
-            JLabel amtLbl = new JLabel(String.format(
-                "৳%.0f raised of ৳%.0f goal  (%d%%)", raised, goal, pct));
-            amtLbl.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-            amtLbl.setForeground(new Color(21, 128, 61));
-            amtLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
-            donPanel.add(amtLbl);
-            donPanel.add(Box.createVerticalStrut(6));
-
-            JProgressBar progBar = new JProgressBar(0, 100);
-            progBar.setValue(pct);
-            progBar.setStringPainted(false);
-            progBar.setForeground(new Color(34, 197, 94));
-            progBar.setBackground(new Color(220, 252, 231));
-            progBar.setPreferredSize(new Dimension(0, 10));
-            progBar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 10));
-            progBar.setAlignmentX(Component.LEFT_ALIGNMENT);
-            progBar.setBorder(BorderFactory.createEmptyBorder());
-            donPanel.add(progBar);
-        } else {
-            JLabel amtLbl = new JLabel(String.format("৳%.0f raised so far", raised));
-            amtLbl.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-            amtLbl.setForeground(new Color(21, 128, 61));
-            amtLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
-            donPanel.add(amtLbl);
-        }
-
-        donPanel.add(Box.createVerticalStrut(10));
-
-        // Donate button
-        boolean alreadyDonated =
-            AlumniDAO.hasUserDonated(notif.getNotificationId(), currentUserId);
-
-        JButton donateBtn = createModernButton(
-            alreadyDonated ? "✓ You Donated" : "💚 Donate Now",
-            alreadyDonated ? new Color(107, 114, 128) : new Color(16, 185, 129));
-        donateBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        donateBtn.setEnabled(!alreadyDonated);
-        donateBtn.addActionListener(e -> {
-            DonationDialog dlg = new DonationDialog(
-                (javax.swing.JFrame) javax.swing.SwingUtilities.getWindowAncestor(
-                    card),
-                notif.getNotificationId(), currentUserId, notif.getTitle(),
-                notif.getDonationGoal(), notif.getDonationRaised());
-            dlg.setVisible(true);
-            if (dlg.isSubmitted()) {
-                // Refresh notifications so donation amounts update immediately.
-                refreshNotificationsView();
-            }
-        });
-        donPanel.add(donateBtn);
-        return donPanel;
-    }
-
-    private void refreshNotificationsView() {
-        if (notificationsListPanel != null) {
-            loadNotifications(notificationsListPanel);
-        }
-    }
-
-    private void showPostNotificationDialog() {
-        PostNotificationDialog dialog =
-            new PostNotificationDialog(this, currentUserId);
-        dialog.setVisible(true);
-
-        if (dialog.isSuccess()) {
-            // Refresh notifications after a successful post.
-            refreshNotificationsView();
-        }
-    }
-
-    private JPanel createAchievementsView() {
-        JPanel view = new JPanel(new BorderLayout());
-        view.setBackground(MAIN_BG);
-
-        // Header
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setBackground(new Color(18, 22, 36));
-        headerPanel.setBorder(new EmptyBorder(20, 30, 20, 30));
-
-        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        titlePanel.setOpaque(false);
-        JLabel titleLabel = new JLabel("🏆 Alumni Achievements");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        titlePanel.add(titleLabel);
-
-        JButton refreshBtn = createModernButton("↻ Refresh", PRIMARY_BLUE);
-        refreshBtn.addActionListener(e -> switchView("ACHIEVEMENTS"));
-
-        headerPanel.add(titlePanel, BorderLayout.WEST);
-        headerPanel.add(refreshBtn, BorderLayout.EAST);
-        view.add(headerPanel, BorderLayout.NORTH);
-
-        // Achievements content
-        JPanel achievementsPanel = new JPanel();
-        achievementsPanel.setLayout(
-            new BoxLayout(achievementsPanel, BoxLayout.Y_AXIS));
-        achievementsPanel.setBackground(MAIN_BG);
-        achievementsPanel.setBorder(new EmptyBorder(20, 30, 20, 30));
-
-        // Load achievements
-        loadAchievements(achievementsPanel);
-
-        JScrollPane scrollPane = new JScrollPane(achievementsPanel);
-        scrollPane.setBorder(null);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        view.add(scrollPane, BorderLayout.CENTER);
-
-        return view;
-    }
-
-    private void loadAchievements(JPanel container) {
-        container.removeAll();
-
-        ArrayList<Achievement> achievements = DatabaseConnection.getAchievements();
-
-        if (achievements.isEmpty()) {
-            JPanel emptyPanel = new JPanel();
-            emptyPanel.setLayout(new BoxLayout(emptyPanel, BoxLayout.Y_AXIS));
-            emptyPanel.setBackground(MAIN_BG);
-            emptyPanel.setBorder(new EmptyBorder(50, 0, 50, 0));
-
-            JLabel emptyIcon = new JLabel("🏆");
-            emptyIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 64));
-            emptyIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-            JLabel emptyLabel = new JLabel("No achievements yet");
-            emptyLabel.setFont(new Font("Segoe UI", Font.PLAIN, 18));
-            emptyLabel.setForeground(TEXT_GRAY);
-            emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-            JLabel tipLabel = new JLabel("Contact admin to add achievements");
-            tipLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-            tipLabel.setForeground(TEXT_GRAY);
-            tipLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-            emptyPanel.add(emptyIcon);
-            emptyPanel.add(Box.createVerticalStrut(15));
-            emptyPanel.add(emptyLabel);
-            emptyPanel.add(Box.createVerticalStrut(5));
-            emptyPanel.add(tipLabel);
-
-            container.add(emptyPanel);
-        } else {
-            for (Achievement achievement : achievements) {
-                container.add(createAchievementCard(achievement));
-                container.add(Box.createVerticalStrut(15));
-            }
-        }
-
-        container.revalidate();
-        container.repaint();
-    }
-
-    private JPanel createAchievementCard(Achievement achievement) {
-        JPanel card = new JPanel(new BorderLayout(15, 15));
-        card.setBackground(new Color(22, 22, 35));
-        card.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(BORDER_COLOR, 1, true),
-            new EmptyBorder(20, 20, 20, 20)));
-        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300));
-
-        // Left: Photo
-        JPanel photoPanel = new JPanel(new BorderLayout());
-        photoPanel.setBackground(new Color(22, 22, 35));
-        photoPanel.setPreferredSize(new Dimension(250, 200));
-
-        try {
-            java.io.File photoFile = new java.io.File(achievement.getPhotoPath());
-            if (photoFile.exists()) {
-                ImageIcon imageIcon = new ImageIcon(achievement.getPhotoPath());
-                Image image = imageIcon.getImage().getScaledInstance(
-                    240, 190, Image.SCALE_SMOOTH);
-                JLabel photoLabel = new JLabel(new ImageIcon(image));
-                photoLabel.setBorder(BorderFactory.createLineBorder(BORDER_COLOR, 1));
-                photoPanel.add(photoLabel, BorderLayout.CENTER);
-            } else {
-                JLabel noPhotoLabel = new JLabel("No Photo", SwingConstants.CENTER);
-                noPhotoLabel.setForeground(TEXT_GRAY);
-                photoPanel.add(noPhotoLabel, BorderLayout.CENTER);
-            }
-        } catch (Exception e) {
-            JLabel errorLabel = new JLabel("Error", SwingConstants.CENTER);
-            errorLabel.setForeground(Color.RED);
-            photoPanel.add(errorLabel, BorderLayout.CENTER);
-        }
-
-        // Right: Content
-        JPanel contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setBackground(new Color(22, 22, 35));
-
-        JLabel titleLabel = new JLabel(achievement.getTitle());
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        titleLabel.setForeground(TEXT_DARK);
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JTextArea descArea = new JTextArea(achievement.getDescription());
-        descArea.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        descArea.setForeground(TEXT_GRAY);
-        descArea.setLineWrap(true);
-        descArea.setWrapStyleWord(true);
-        descArea.setEditable(false);
-        descArea.setOpaque(false);
-        descArea.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel dateLabel = new JLabel("📅 " + achievement.getUploadDate());
-        dateLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        dateLabel.setForeground(TEXT_GRAY);
-        dateLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        contentPanel.add(titleLabel);
-        contentPanel.add(Box.createVerticalStrut(10));
-        contentPanel.add(descArea);
-        contentPanel.add(Box.createVerticalStrut(10));
-        contentPanel.add(dateLabel);
-
-        card.add(photoPanel, BorderLayout.WEST);
-        card.add(contentPanel, BorderLayout.CENTER);
-
-        return card;
-    }
-
-    private String getTimeAgo(Timestamp timestamp) {
-        if (timestamp == null)
-            return "";
-
-        long now = System.currentTimeMillis();
-        long time = timestamp.getTime();
-        long diff = now - time;
-
-        long seconds = diff / 1000;
-        long minutes = seconds / 60;
-        long hours = minutes / 60;
-        long days = hours / 24;
-
-        if (days > 7) {
-            return new java.text.SimpleDateFormat("MMM dd, yyyy").format(timestamp);
-        } else if (days > 0) {
-            return days + " day" + (days > 1 ? "s" : "") + " ago";
-        } else if (hours > 0) {
-            return hours + " hour" + (hours > 1 ? "s" : "") + " ago";
-        } else if (minutes > 0) {
-            return minutes + " minute" + (minutes > 1 ? "s" : "") + " ago";
-        } else {
-            return "Just now";
-        }
-    }
-
-    // ==========================================
-    // PLACEHOLDER VIEW
-    // ==========================================
-    private JPanel createPlaceholderView(String icon, String title,
-        String description) {
-        JPanel view = new JPanel();
-        view.setLayout(new BoxLayout(view, BoxLayout.Y_AXIS));
-        view.setBackground(MAIN_BG);
-        view.setBorder(new EmptyBorder(100, 0, 100, 0));
-
-        JLabel iconLabel = new JLabel(icon);
-        iconLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 72));
-        iconLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        titleLabel.setForeground(TEXT_DARK);
-        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel descLabel = new JLabel(description);
-        descLabel.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        descLabel.setForeground(TEXT_GRAY);
-        descLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        view.add(iconLabel);
-        view.add(Box.createVerticalStrut(20));
-        view.add(titleLabel);
-        view.add(Box.createVerticalStrut(10));
-        view.add(descLabel);
-
-        return view;
-    }
-
-    private JPanel createStatsPanel() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 0));
-        panel.setBackground(MAIN_BG);
-        panel.setBorder(new EmptyBorder(30, 35, 15, 35));
-
-        // Get real statistics from database
-        int totalAlumni = AlumniDAO.getTotalProfileCount();
-        int totalStudents = AlumniDAO.getStudentCount();
-        int totalProfessionals = totalAlumni - totalStudents;
-
-        panel.add(createStatCard("👥", "Total Alumni", String.valueOf(totalAlumni),
-            PRIMARY_BLUE));
-        panel.add(createStatCard("🎓", "Students", String.valueOf(totalStudents),
-            SUCCESS_GREEN));
-        panel.add(createStatCard("💼", "Professionals",
-            String.valueOf(totalProfessionals),
-            ACCENT_PURPLE));
-
-        return panel;
-    }
-
-    private JPanel createStatCard(String icon, String label, String value,
-        Color accentColor) {
-        JPanel card = new JPanel(new BorderLayout(15, 0)) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getBackground());
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
-                g2.dispose();
-            }
-        };
-        card.setBackground(new Color(22, 22, 35));
-        card.setPreferredSize(new Dimension(250, 100));
-        card.setBorder(new EmptyBorder(20, 25, 20, 25));
-
-        JLabel iconLabel = new JLabel(icon);
-        iconLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 36));
-        iconLabel.setOpaque(true);
-        iconLabel.setBackground(new Color(accentColor.getRed(),
-            accentColor.getGreen(),
-            accentColor.getBlue(), 30));
-        iconLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        iconLabel.setPreferredSize(new Dimension(60, 60));
-
-        JPanel textPanel = new JPanel(new GridLayout(2, 1, 0, 5));
-        textPanel.setBackground(new Color(22, 22, 35));
-
-        JLabel valueLabel = new JLabel(value);
-        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        valueLabel.setForeground(TEXT_DARK);
-
-        JLabel labelText = new JLabel(label);
-        labelText.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        labelText.setForeground(TEXT_GRAY);
-
-        textPanel.add(valueLabel);
-        textPanel.add(labelText);
-
-        card.add(iconLabel, BorderLayout.WEST);
-        card.add(textPanel, BorderLayout.CENTER);
-
-        return card;
-    }
-
-    // ==========================================
-    // DATA LOADING - NOW USES REAL DATABASE DATA
-    // ==========================================
-    private void loadDashboardData(String searchTerm) {
-        contentPanel.removeAll();
-
-        // Section Header
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setBackground(MAIN_BG);
-        headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-
-        JLabel sectionTitle = new JLabel(
-            searchTerm.isEmpty() ? "All Alumni"
-                                 : "Search Results for: \"" + searchTerm + "\"");
-        sectionTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        sectionTitle.setForeground(TEXT_DARK);
-
-        headerPanel.add(sectionTitle, BorderLayout.WEST);
-        contentPanel.add(headerPanel);
-        contentPanel.add(Box.createVerticalStrut(20));
-
-        // Get profiles from database - NO MORE MOCK DATA
-        List<AlumniProfile> profiles;
-        if (searchTerm.isEmpty()) {
-            profiles = AlumniDAO.getAllProfiles();
-        } else {
-            profiles = AlumniDAO.searchAlumni(searchTerm);
-        }
-
-        // Check if database is empty
-        if (profiles == null || profiles.isEmpty()) {
-            contentPanel.add(createEmptyDatabaseState());
-            contentPanel.revalidate();
-            contentPanel.repaint();
-            return;
-        }
-
-        // Grid Layout for Cards
-        JPanel grid = new JPanel(new GridLayout(0, 2, 25, 25));
-        grid.setBackground(MAIN_BG);
-
-        int currentYear = Calendar.getInstance().get(Calendar.YEAR);
-        int displayCount = 0;
-
-        for (AlumniProfile p : profiles) {
-            // Skip current user
-            if (p.getUserId() == currentUserId)
-                continue;
-
-            boolean isStudent = (p.getJobRole() != null && p.getJobRole().equalsIgnoreCase("Student")) || p.getGraduationYear() >= currentYear;
-
-            grid.add(createModernProfileCard(p, isStudent));
-            displayCount++;
-        }
-
-        if (displayCount == 0) {
-            contentPanel.add(createEmptyState());
-        } else {
-            contentPanel.add(grid);
-        }
-
-        contentPanel.revalidate();
-        contentPanel.repaint();
-    }
-
-    private JPanel createEmptyDatabaseState() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(MAIN_BG);
-        panel.setBorder(new EmptyBorder(100, 0, 100, 0));
-
-        JLabel icon = new JLabel("👥");
-        icon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 72));
-        icon.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel text = new JLabel("No alumni profiles yet");
-        text.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        text.setForeground(TEXT_GRAY);
-        text.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel subtext = new JLabel(
-            "Be the first to create a profile or invite others to register!");
-        subtext.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        subtext.setForeground(TEXT_GRAY);
-        subtext.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        panel.add(icon);
-        panel.add(Box.createVerticalStrut(20));
-        panel.add(text);
-        panel.add(Box.createVerticalStrut(10));
-        panel.add(subtext);
-
-        return panel;
-    }
-
-    // ==========================================
-    // MODERN PROFILE CARD
-    // ==========================================
-    private JPanel createModernProfileCard(AlumniProfile p, boolean isStudent) {
-        JPanel card = new JPanel(new BorderLayout(0, 0)) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-
-                // Shadow effect
-                g2.setColor(new Color(0, 0, 0, 8));
-                g2.fillRoundRect(2, 2, getWidth() - 4, getHeight() - 4, 20, 20);
-
-                // Card background
-                g2.setColor(getBackground());
-                g2.fillRoundRect(0, 0, getWidth() - 4, getHeight() - 4, 20, 20);
-
-                g2.dispose();
-            }
-        };
-        card.setBackground(new Color(28, 33, 52));
-        card.setBorder(new EmptyBorder(25, 25, 25, 25));
-        card.setOpaque(false);
-
-        // Main Content
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(new Color(28, 33, 52));
-
-        // Header:   Avatar + Info
-        JPanel header = new JPanel(new BorderLayout(15, 0));
-        header.setBackground(new Color(28, 33, 52));
-        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 70));
-
-        // Avatar — use real photo if available, otherwise initials
-        Color avatarColor = isStudent ? STUDENT_TEXT : ALUMNI_TEXT;
-        JLabel avatar;
-        String cardPic = p.getProfilePicturePath();
-        if (cardPic != null && !cardPic.isEmpty() && new java.io.File(cardPic).exists()) {
-            avatar = new JLabel(new CircularImageIcon(cardPic, 60));
-        } else {
-            avatar = new JLabel(new AvatarIcon(p.getFullName(), 60, avatarColor));
-        }
-
-        // Info
-        JPanel info = new JPanel();
-        info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
-        info.setBackground(new Color(28, 33, 52));
-
-        JLabel name = new JLabel(p.getFullName());
-        name.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        name.setForeground(TEXT_DARK);
-        name.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        String subtitle = isStudent
-            ? "🎓 Class of " + p.getGraduationYear()
-            : "💼 " + p.getJobRole() + " at " + p.getCompany();
-        JLabel role = new JLabel(subtitle);
-        role.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        role.setForeground(TEXT_GRAY);
-        role.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        info.add(name);
-        info.add(Box.createVerticalStrut(6));
-        info.add(role);
-
-        header.add(avatar, BorderLayout.WEST);
-        header.add(info, BorderLayout.CENTER);
-
-        // Badge
-        JLabel badge = createBadge(isStudent ? "STUDENT" : "ALUMNI", isStudent);
-        JPanel badgePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        badgePanel.setBackground(new Color(28, 33, 52));
-        badgePanel.add(badge);
-        header.add(badgePanel, BorderLayout.EAST);
-
-        content.add(header);
-        content.add(Box.createVerticalStrut(20));
-
-        // Divider
-        JSeparator sep = new JSeparator();
-        sep.setForeground(BORDER_COLOR);
-        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-        content.add(sep);
-        content.add(Box.createVerticalStrut(15));
-
-        // Skills Section
-        JLabel skillsLabel = new JLabel("Skills & Expertise");
-        skillsLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        skillsLabel.setForeground(TEXT_GRAY);
-        skillsLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(skillsLabel);
-        content.add(Box.createVerticalStrut(10));
-
-        JPanel skillsPanel = createSkillsPanel(
-            p.getSkills() != null ? p.getSkills() : "No skills listed");
-        skillsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(skillsPanel);
-        content.add(Box.createVerticalStrut(20));
-
-        // Action Buttons
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        actions.setBackground(new Color(28, 33, 52));
-        actions.setMaximumSize(new Dimension(Integer.MAX_VALUE, 45));
-
-        JButton viewBtn = createModernButton("View Profile", Color.WHITE);
-        viewBtn.setForeground(PRIMARY_BLUE);
-        viewBtn.setBorder(BorderFactory.createCompoundBorder(
-            new LineBorder(PRIMARY_BLUE, 2, true),
-            new EmptyBorder(10, 20, 10, 20)));
-        viewBtn.addActionListener(e -> showModernDetails(p));
-
-        JButton msgBtn = createModernButton("💬 Message", PRIMARY_BLUE);
-        msgBtn.addActionListener(e -> showMessageDialog(p));
-
-        actions.add(viewBtn);
-        actions.add(msgBtn);
-
-        content.add(actions);
-
-        card.add(content, BorderLayout.CENTER);
-
-        // Hover effect
-        card.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseEntered(MouseEvent e) {
-                card.setCursor(new Cursor(Cursor.HAND_CURSOR));
-            }
-        });
-
-        return card;
-    }
-
-    private JLabel createBadge(String text, boolean isStudent) {
-        JLabel badge = new JLabel(" " + text + " ") {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getBackground());
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
-        badge.setOpaque(false);
-        badge.setBackground(isStudent ? STUDENT_BG : ALUMNI_BG);
-        badge.setForeground(isStudent ? STUDENT_TEXT : ALUMNI_TEXT);
-        badge.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        badge.setBorder(new EmptyBorder(5, 12, 5, 12));
-        return badge;
-    }
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(20, 32, 20, 24));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        card.setAlignmentX(LEFT_ALIGNMENT);
+        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-    private JPanel createSkillsPanel(String skillsText) {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-        panel.setBackground(new Color(28, 33, 52));
+        JPanel body = new JPanel();
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.setOpaque(false);
 
-        if (skillsText == null || skillsText.trim().isEmpty() || skillsText.equals("Not specified") || skillsText.contains("Please update")) {
-            JLabel noSkills = new JLabel("No skills listed yet");
-            noSkills.setFont(new Font("Segoe UI", Font.ITALIC, 16));
-            noSkills.setForeground(TEXT_GRAY);
-            panel.add(noSkills);
-            return panel;
+        JPanel header = new JPanel(new BorderLayout(14, 0));
+        header.setOpaque(false);
+        header.setAlignmentX(LEFT_ALIGNMENT);
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
+
+        JLabel badge = badgeLabel(noticeBadgeText(n));
+        header.add(badge, BorderLayout.WEST);
+
+        JPanel titleWrap = new JPanel();
+        titleWrap.setLayout(new BoxLayout(titleWrap, BoxLayout.Y_AXIS));
+        titleWrap.setOpaque(false);
+
+        JLabel titleLbl = lbl(safe(n.getTitle(), "Untitled notice"), new Font("Segoe UI", Font.BOLD, 22), TXT_H);
+        JLabel byLbl = lbl(postedByText(n) + " · just now", new Font("Segoe UI", Font.PLAIN, 14), TXT_S);
+        titleWrap.add(titleLbl);
+        titleWrap.add(vgap(4));
+        titleWrap.add(byLbl);
+        header.add(titleWrap, BorderLayout.CENTER);
+
+        body.add(header);
+        body.add(vgap(16));
+
+        JTextArea text = new JTextArea(normalizeContent(safe(n.getContent(), "No details provided.")));
+        text.setLineWrap(true);
+        text.setWrapStyleWord(true);
+        text.setEditable(false);
+        text.setOpaque(false);
+        text.setForeground(new Color(210, 220, 240));
+        text.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        text.setBorder(null);
+        text.setMargin(new Insets(2, 0, 2, 0));
+        text.setAlignmentX(LEFT_ALIGNMENT);
+        body.add(text);
+        body.add(vgap(16));
+
+        JPanel tags = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        tags.setOpaque(false);
+        tags.setAlignmentX(LEFT_ALIGNMENT);
+
+        if (n.isJobPosting()) {
+            tags.add(chipLabel("Job Title: " + safe(n.getJobPosition(), "Not specified"), new Color(20, 26, 50), ACCENT_B));
+            tags.add(chipLabel("Company: " + safe(n.getCompanyName(), "Not specified"), new Color(20, 26, 50), ACCENT_P));
+            tags.add(chipLabel("Location: " + safe(n.getJobLocation(), "Not specified"), new Color(20, 26, 50), ACCENT_G));
         }
-
-        String[] skills = skillsText.split(",");
-        for (String skill : skills) {
-            if (skills.length > 5 && panel.getComponentCount() >= 5) {
-                JLabel more = new JLabel("+" + (skills.length - 5) + " more");
-                more.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-                more.setForeground(TEXT_GRAY);
-                panel.add(more);
-                break;
+        if (n.isEvent()) {
+            String eventDateText = n.getEventDate() == null ? "Date TBA" : dateOnly(n.getEventDate().toString());
+            tags.add(chipLabel("Venue: " + safe(n.getEventLocation(), "Not specified"), new Color(20, 26, 50), ACCENT_I));
+            tags.add(chipLabel("Date: " + eventDateText, new Color(20, 26, 50), ACCENT_O));
+            if (n.isDonationsEnabled()) {
+                String donation = "Raised: " + (int) n.getDonationRaised() + " of " + (int) n.getDonationGoal();
+                tags.add(chipLabel(donation, new Color(20, 40, 30), ACCENT_G));
             }
-            panel.add(createSkillTag(skill.trim()));
         }
 
-        return panel;
+        if (tags.getComponentCount() > 0) {
+            body.add(tags);
+            body.add(vgap(16));
+        }
+
+        if (n.isEvent() && n.isDonationsEnabled()) {
+            body.add(donationGraphSection(n));
+            body.add(vgap(14));
+        }
+
+        if (n.isJobPosting() || (n.isEvent() && n.isDonationsEnabled())) {
+            JSeparator sep = new JSeparator();
+            sep.setForeground(new Color(72, 88, 132, 65));
+            sep.setAlignmentX(LEFT_ALIGNMENT);
+            body.add(sep);
+            body.add(vgap(16));
+
+            JPanel footer = new JPanel(new BorderLayout());
+            footer.setOpaque(false);
+            footer.setAlignmentX(LEFT_ALIGNMENT);
+            footer.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
+
+            if (n.isJobPosting()) {
+                String applyUrl = safe(n.getApplicationUrl(), "");
+                if (!applyUrl.isEmpty()) {
+                    JButton applyBtn = outlineActionButton("Apply Now");
+                    applyBtn.addActionListener(e -> {
+                        try {
+                            if (Desktop.isDesktopSupported())
+                                Desktop.getDesktop().browse(new URI(applyUrl));
+                            else
+                                JOptionPane.showMessageDialog(this, "Application URL: " + applyUrl);
+                        } catch (Exception ex) {
+                            JOptionPane.showMessageDialog(this, "Could not open URL: " + applyUrl);
+                        }
+                    });
+                    footer.add(applyBtn, BorderLayout.EAST);
+                }
+            } else if (n.isEvent() && n.isDonationsEnabled()) {
+                boolean donated = AlumniDAO.hasUserDonated(n.getNotificationId(), currentUserId);
+                JButton donateBtn = outlineActionButton(donated ? "Donation Pending" : "Donate Now");
+                donateBtn.setEnabled(!donated);
+                donateBtn.addActionListener(e -> {
+                    JFrame parent = (JFrame) SwingUtilities.getWindowAncestor(this);
+                    DonationDialog dlg = new DonationDialog(parent, n.getNotificationId(), currentUserId, safe(n.getTitle(), "Event"), n.getDonationGoal(), n.getDonationRaised());
+                    dlg.setVisible(true);
+                    if (dlg.isSubmitted()) showView("NOTIFICATIONS");
+                });
+                footer.add(donateBtn, BorderLayout.EAST);
+            }
+            body.add(footer);
+        }
+
+        card.add(body, BorderLayout.CENTER);
+        return card;
     }
 
-    private JLabel createSkillTag(String skill) {
-        JLabel tag = new JLabel(skill) {
+    private JPanel donationGraphSection(Notification n) {
+        double goal = Math.max(0, n.getDonationGoal());
+        double raised = Math.max(0, n.getDonationRaised());
+        double ratio = goal <= 0 ? 0 : Math.min(1.0, raised / goal);
+        int percent = (int) Math.round(ratio * 100);
+
+        JPanel block = new JPanel();
+        block.setOpaque(false);
+        block.setLayout(new BoxLayout(block, BoxLayout.Y_AXIS));
+        block.setAlignmentX(LEFT_ALIGNMENT);
+
+        JPanel row = new JPanel(new BorderLayout(10, 0));
+        row.setOpaque(false);
+        row.setAlignmentX(LEFT_ALIGNMENT);
+
+        JLabel left = lbl("Donation Progress", F_H3, TXT_H);
+        JLabel right = lbl(percent + "%", F_H3, ACCENT_G);
+        row.add(left, BorderLayout.WEST);
+        row.add(right, BorderLayout.EAST);
+        block.add(row);
+        block.add(vgap(8));
+
+        JComponent bar = new JComponent() {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(MAIN_BG);
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(27, 35, 58));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                int fillW = (int) Math.round(getWidth() * ratio);
+                if (fillW > 0) {
+                    g2.setPaint(new GradientPaint(0, 0, ACCENT_G, getWidth(), 0, ACCENT_B));
+                    g2.fillRoundRect(0, 0, fillW, getHeight(), 10, 10);
+                }
+                g2.setColor(new Color(255, 255, 255, 20));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                g2.dispose();
+            }
+        };
+        bar.setPreferredSize(new Dimension(100, 12));
+        bar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 12));
+        block.add(bar);
+        block.add(vgap(6));
+
+        String goalText = goal <= 0 ? "Open goal" : ("Goal: " + (int) goal);
+        String raisedText = "Raised: " + (int) raised;
+        block.add(lbl(raisedText + " · " + goalText, F_SMALL, TXT_M));
+        return block;
+    }
+
+    private String postedByText(Notification n) {
+        String postedBy = safe(n.getPostedByName(), "Unknown");
+        String company = safe(n.getPosterCompany(), "");
+        return company.isEmpty() ? ("Posted by: " + postedBy) : ("Posted by: " + postedBy + " · " + company);
+    }
+
+    private String noticeBadgeText(Notification n) {
+        String source = n.isJobPosting() ? safe(n.getCompanyName(), "Job") : safe(n.getTitle(), "Notice");
+        String[] parts = source.trim().split("\\s+");
+        if (parts.length >= 2) return ("" + Character.toUpperCase(parts[0].charAt(0)) + Character.toUpperCase(parts[1].charAt(0)));
+        return source.substring(0, Math.min(2, source.length())).toUpperCase();
+    }
+
+    private JLabel badgeLabel(String text) {
+        JLabel badge = new JLabel(text, SwingConstants.CENTER) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(25, 30, 50));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 14, 14);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        badge.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        badge.setForeground(ACCENT_I);
+        badge.setPreferredSize(new Dimension(64, 64));
+        badge.setMinimumSize(new Dimension(64, 64));
+        badge.setMaximumSize(new Dimension(64, 64));
+        return badge;
+    }
+
+    private JLabel chipLabel(String text, Color bg, Color fg) {
+        JLabel chip = new JLabel(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(bg);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        chip.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        chip.setForeground(fg);
+        chip.setBorder(new EmptyBorder(6, 12, 6, 12));
+        return chip;
+    }
+
+    private JButton outlineActionButton(String text) {
+        JButton btn = new JButton(text);
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        btn.setForeground(TXT_H);
+        btn.setBackground(new Color(0, 0, 0, 0));
+        btn.setFocusPainted(false);
+        btn.setContentAreaFilled(false);
+        btn.setOpaque(false);
+        btn.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(BORDER, 1),
+            new EmptyBorder(8, 20, 8, 20)));
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return btn;
+    }
+
+    private String normalizeContent(String text) {
+        if (text == null) return "";
+        String[] lines = text.replace("\r", "").split("\n");
+        StringBuilder sb = new StringBuilder();
+        for (String ln : lines) {
+            String t = ln == null ? "" : ln.trim();
+            if (!t.isEmpty()) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(t);
+            }
+        }
+        return sb.length() == 0 ? text.trim() : sb.toString();
+    }
+
+    private String dateOnly(String text) {
+        if (text == null || text.trim().isEmpty()) return "Date TBA";
+        String cleaned = text.trim();
+        int spaceIdx = cleaned.indexOf(' ');
+        if (spaceIdx > 0) return cleaned.substring(0, spaceIdx);
+        return cleaned;
+    }
+
+    private String getConversationPreview(int otherUserId) {
+        try {
+            List<Message> messages = AlumniDAO.getConversationMessages(currentUserId, otherUserId);
+            if (messages == null || messages.isEmpty()) return "No messages yet";
+            String content = safe(messages.get(messages.size() - 1).getContent(), "");
+            if (content.length() > 80) return content.substring(0, 77) + "...";
+            return content;
+        } catch (Exception ignored) {
+            return "Open chat";
+        }
+    }
+
+    private String getConversationTime(int otherUserId) {
+        try {
+            List<Message> messages = AlumniDAO.getConversationMessages(currentUserId, otherUserId);
+            if (messages == null || messages.isEmpty()) return "";
+            Timestamp ts = messages.get(messages.size() - 1).getSentAt();
+            return timeAgo(ts);
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private JPanel actionRow(String icon, String title, String sub) {
+        JPanel row = new JPanel(new BorderLayout(12, 0)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(CARD);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                g2.setColor(BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        row.setOpaque(false);
+        row.setBorder(new EmptyBorder(12, 16, 12, 16));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 58));
+        row.setAlignmentX(LEFT_ALIGNMENT);
+
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        left.setOpaque(false);
+        left.add(lbl(icon, new Font("Segoe UI Emoji", Font.PLAIN, 18), TXT_H));
+        left.add(lbl(title, F_BODY, TXT_H));
+        row.add(left, BorderLayout.CENTER);
+        row.add(lbl(sub, F_SMALL, TXT_M), BorderLayout.EAST);
+        return row;
+    }
+
+    private JPanel metricBar(String label, int value, Color accent) {
+        JPanel box = new JPanel();
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        box.setOpaque(false);
+        box.add(lbl(label + " · " + value, F_BODY, TXT_S));
+
+        int width = Math.min(260, 40 + value * 10);
+        JPanel bar = new JPanel();
+        bar.setOpaque(false);
+        bar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
+        bar.setPreferredSize(new Dimension(260, 8));
+
+        JComponent line = new JComponent() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(25, 30, 50));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                g2.setColor(accent);
+                g2.fillRoundRect(0, 0, Math.min(getWidth(), width), getHeight(), 6, 6);
+                g2.dispose();
+            }
+        };
+        line.setPreferredSize(new Dimension(260, 8));
+        line.setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
+        bar.setLayout(new BorderLayout());
+        bar.add(line, BorderLayout.CENTER);
+        box.add(vgap(6));
+        box.add(bar);
+        return box;
+    }
+
+    private JPanel alumniCompanyChart(List<AlumniProfile> profiles) {
+        Map<String, Integer> companyCounts = new LinkedHashMap<>();
+        for (AlumniProfile profile : profiles) {
+            if (profile == null) continue;
+            String role = safe(profile.getJobRole(), "");
+            if ("student".equalsIgnoreCase(role) || "admin".equalsIgnoreCase(role) || "administrator".equalsIgnoreCase(role)) continue;
+            String company = safe(profile.getCompany(), "Unknown company");
+            companyCounts.put(company, companyCounts.getOrDefault(company, 0) + 1);
+        }
+
+        List<Map.Entry<String, Integer>> entries = new ArrayList<>(companyCounts.entrySet());
+        entries.sort((a, b) -> {
+            int cmp = Integer.compare(b.getValue(), a.getValue());
+            return cmp != 0 ? cmp : a.getKey().compareToIgnoreCase(b.getKey());
+        });
+
+        JPanel card = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(14, 19, 40));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        card.setLayout(new BorderLayout());
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(18, 18, 18, 18));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 320));
+
+        if (entries.isEmpty()) {
+            JPanel empty = new JPanel();
+            empty.setOpaque(false);
+            empty.setLayout(new BoxLayout(empty, BoxLayout.Y_AXIS));
+            empty.add(lbl("No alumni company data available yet.", F_BODY, TXT_S));
+            card.add(empty, BorderLayout.CENTER);
+            return card;
+        }
+
+        int maxValue = 0;
+        for (Map.Entry<String, Integer> entry : entries) {
+            maxValue = Math.max(maxValue, entry.getValue());
+        }
+
+        List<Map.Entry<String, Integer>> topEntries = entries.size() > 4 ? entries.subList(0, 4) : entries;
+        Color[] colors = new Color[] {ACCENT_R, ACCENT_B, ACCENT_G, ACCENT_O};
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+        header.add(lbl("Top alumni companies", F_SMALL, TXT_M), BorderLayout.WEST);
+        header.add(lbl("Count", F_SMALL, TXT_M), BorderLayout.EAST);
+        card.add(header, BorderLayout.NORTH);
+
+        final int chartMaxValue = maxValue;
+
+        JPanel chart = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(14, 19, 40));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+
+                int leftPad = 58;
+                int rightPad = 18;
+                int topPad = 16;
+                int bottomPad = 54;
+                int chartWidth = Math.max(1, getWidth() - leftPad - rightPad);
+                int chartHeight = Math.max(1, getHeight() - topPad - bottomPad);
+                int axisX = leftPad;
+                int axisY = topPad + chartHeight;
+
+                g2.setColor(new Color(80, 92, 130));
+                g2.setStroke(new BasicStroke(2f));
+                g2.drawLine(axisX, topPad, axisX, axisY);
+                g2.drawLine(axisX, axisY, getWidth() - rightPad, axisY);
+
+                if (chartMaxValue > 0) {
+                    for (int i = 1; i <= 4; i++) {
+                        int y = axisY - (chartHeight * i / 4);
+                        g2.setColor(new Color(80, 92, 130, 80));
+                        g2.drawLine(axisX, y, getWidth() - rightPad, y);
+                        g2.setColor(TXT_M);
+                        String tick = String.valueOf((int) Math.round(chartMaxValue * i / 4.0));
+                        FontMetrics fm = g2.getFontMetrics(F_SMALL);
+                        g2.setFont(F_SMALL);
+                        g2.drawString(tick, 12, y + (fm.getAscent() / 2) - 1);
+                    }
+                }
+
+                int slotCount = Math.max(1, topEntries.size());
+                int slotWidth = chartWidth / slotCount;
+                int barWidth = Math.max(26, Math.min(52, slotWidth / 2));
+                int barBaseY = axisY;
+
+                g2.setFont(new Font("Segoe UI", Font.BOLD, 12));
+                for (int i = 0; i < topEntries.size(); i++) {
+                    Map.Entry<String, Integer> entry = topEntries.get(i);
+                    Color accent = colors[i % colors.length];
+                    int barHeight = (int) Math.round((entry.getValue() / (double) chartMaxValue) * (chartHeight - 18));
+                    int x = axisX + (slotWidth * i) + (slotWidth - barWidth) / 2;
+                    int y = barBaseY - barHeight;
+
+                    g2.setColor(accent);
+                    g2.fillRoundRect(x, y, barWidth, barHeight, 10, 10);
+                    g2.setColor(new Color(255, 255, 255, 50));
+                    g2.drawRoundRect(x, y, barWidth, barHeight, 10, 10);
+
+                    String valueText = String.valueOf(entry.getValue());
+                    FontMetrics valueFm = g2.getFontMetrics();
+                    int valueX = x + (barWidth - valueFm.stringWidth(valueText)) / 2;
+                    int valueY = y - 6;
+                    g2.setColor(TXT_H);
+                    g2.drawString(valueText, Math.max(axisX + 2, valueX), Math.max(topPad + 12, valueY));
+
+                    String company = entry.getKey();
+                    AffineTransform old = g2.getTransform();
+                    g2.rotate(-Math.PI / 2);
+                    int labelX = -(barBaseY + 24);
+                    int labelY = x + barWidth / 2 + 5;
+                    g2.setColor(Color.WHITE);
+                    g2.drawString(company, labelX, labelY);
+                    g2.setTransform(old);
+
+                    g2.setColor(TXT_S);
+                    FontMetrics companyFm = g2.getFontMetrics();
+                    String shortName = company;
+                    int maxLabelWidth = slotWidth - 8;
+                    while (companyFm.stringWidth(shortName) > maxLabelWidth && shortName.length() > 3) {
+                        shortName = shortName.substring(0, shortName.length() - 1);
+                    }
+                    if (!shortName.equals(company) && shortName.length() > 3) shortName = shortName.substring(0, shortName.length() - 3) + "...";
+                    int labelWidth = companyFm.stringWidth(shortName);
+                    int labelX2 = x + (barWidth - labelWidth) / 2;
+                    g2.drawString(shortName, labelX2, axisY + 24);
+                }
+
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        chart.setOpaque(false);
+        chart.setPreferredSize(new Dimension(260, 230));
+        chart.setMaximumSize(new Dimension(Integer.MAX_VALUE, 230));
+        card.add(chart, BorderLayout.CENTER);
+
+        if (entries.size() > topEntries.size()) {
+            JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            footer.setOpaque(false);
+            footer.add(lbl("Showing top 4 companies by alumni count.", F_SMALL, TXT_M));
+            card.add(footer, BorderLayout.SOUTH);
+        }
+
+        return card;
+    }
+
+    private void openPostNoticeDialog() {
+        if (currentUserId <= 0) {
+            JOptionPane.showMessageDialog(this, "Unable to resolve your user profile for posting.", "Post Notice", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        PostNotificationDialog dialog = new PostNotificationDialog(this, currentUserId);
+        dialog.setVisible(true);
+        showView("NOTIFICATIONS");
+    }
+
+    private String safe(String s, String fallback) { return (s == null || s.trim().isEmpty()) ? fallback : s.trim(); }
+
+    private String timeAgo(Timestamp ts) {
+        if (ts == null) return "now";
+        long diff = System.currentTimeMillis() - ts.getTime();
+        long mins = diff / 60000;
+        long hours = mins / 60;
+        long days = hours / 24;
+        if (days > 0) return days + "d ago";
+        if (hours > 0) return hours + "h ago";
+        if (mins > 0) return mins + "m ago";
+        return "now";
+    }
+
+    private JLabel lbl(String t, Font f, Color c) {
+        JLabel l = new JLabel(t);
+        l.setFont(f);
+        l.setForeground(c);
+        return l;
+    }
+
+    private Component vgap(int h) { return Box.createVerticalStrut(h); }
+
+    private JPanel rowPanel() {
+        JPanel p = new JPanel(new BorderLayout(10, 0));
+        p.setOpaque(false);
+        return p;
+    }
+
+    private JLabel miniTag(String text) {
+        JLabel l = new JLabel(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(ACCENT_I.getRed(), ACCENT_I.getGreen(), ACCENT_I.getBlue(), 25));
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
-        tag.setOpaque(false);
-        tag.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        tag.setForeground(TEXT_DARK);
-        tag.setBorder(new EmptyBorder(6, 12, 6, 12));
-        return tag;
+        l.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        l.setForeground(ACCENT_I);
+        l.setOpaque(false);
+        l.setBorder(new EmptyBorder(4, 8, 4, 8));
+        return l;
     }
 
-    // ==========================================
-    // HELPER METHODS
-    // ==========================================
-    private JButton createModernButton(String text, Color bgColor) {
-        JButton btn = new JButton(text) {
+    private JButton tinyBtn(String text, Color accent, Runnable action) {
+        JButton b = new JButton(text) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-
-                if (getModel().isPressed()) {
-                    g2.setColor(bgColor.darker());
-                } else if (getModel().isRollover()) {
-                    g2.setColor(bgColor == Color.WHITE ? MAIN_BG : PRIMARY_HOVER);
-                } else {
-                    g2.setColor(bgColor);
-                }
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), getModel().isRollover() ? 50 : 25));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
-
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        btn.setForeground(bgColor == Color.WHITE ? TEXT_DARK : Color.WHITE);
-        btn.setBorder(new EmptyBorder(10, 25, 10, 25));
-        btn.setContentAreaFilled(false);
-        btn.setFocusPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-
-        return btn;
+        b.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        b.setForeground(accent);
+        b.setPreferredSize(new Dimension(86, 28));
+        b.setContentAreaFilled(false);
+        b.setBorderPainted(false);
+        b.setFocusPainted(false);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        if (action != null) {
+            b.addActionListener(e -> action.run());
+        }
+        return b;
     }
 
-    private JButton createIconButton(String icon, String tooltip) {
-        JButton btn = new JButton(icon) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-
-                if (getModel().isRollover()) {
-                    g2.setColor(MAIN_BG);
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
-                }
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-
-        btn.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 20));
-        btn.setPreferredSize(new Dimension(50, 50));
-        btn.setToolTipText(tooltip);
-        btn.setContentAreaFilled(false);
-        btn.setFocusPainted(false);
-        btn.setBorderPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-
-        return btn;
+    private void openConversationWith(int otherUserId, String otherName) {
+        if (currentUserId <= 0) {
+            JOptionPane.showMessageDialog(this, "Unable to open chat without a valid logged-in user.", "Message", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        new ChatConversationFrame(currentUserId, username, otherUserId, otherName).setVisible(true);
     }
 
-    private JScrollPane createStyledScrollPane(JPanel content) {
-        JScrollPane scrollPane = new JScrollPane(content);
-        scrollPane.setBorder(null);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        scrollPane.setBackground(MAIN_BG);
+    private void showAlumniProfilePreview(int userId, String fallbackName) {
+        AlumniProfile profile = null;
+        try {
+            profile = AlumniDAO.getProfileByUserId(userId);
+        } catch (Exception ignored) {
+        }
+        if (profile == null) {
+            profile = new AlumniProfile();
+            profile.setUserId(userId);
+            profile.setFullName(fallbackName);
+        }
 
-        // Custom scrollbar
-        scrollPane.getVerticalScrollBar().setUI(new BasicScrollBarUI() {
-            @Override
-            protected void configureScrollBarColors() {
-                this.thumbColor = new Color(203, 213, 224);
-                this.trackColor = MAIN_BG;
-            }
-
-            @Override
-            protected JButton createDecreaseButton(int orientation) {
-                return createZeroButton();
-            }
-
-            @Override
-            protected JButton createIncreaseButton(int orientation) {
-                return createZeroButton();
-            }
-
-            private JButton createZeroButton() {
-                JButton button = new JButton();
-                button.setPreferredSize(new Dimension(0, 0));
-                return button;
-            }
-        });
-
-        return scrollPane;
-    }
-
-    private void setPlaceholder(JTextField field, String placeholder) {
-        field.setText(placeholder);
-        field.setForeground(TEXT_GRAY);
-
-        field.addFocusListener(new FocusAdapter() {
-            @Override
-            public void focusGained(FocusEvent e) {
-                if (field.getText().equals(placeholder)) {
-                    field.setText("");
-                    field.setForeground(TEXT_DARK);
-                }
-            }
-
-            @Override
-            public void focusLost(FocusEvent e) {
-                if (field.getText().isEmpty()) {
-                    field.setText(placeholder);
-                    field.setForeground(TEXT_GRAY);
-                }
-            }
-        });
-    }
-
-    private JPanel createEmptyState() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(MAIN_BG);
-        panel.setBorder(new EmptyBorder(100, 0, 100, 0));
-
-        JLabel icon = new JLabel("🔍");
-        icon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 72));
-        icon.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel text = new JLabel("No profiles found");
-        text.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        text.setForeground(TEXT_GRAY);
-        text.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel subtext = new JLabel("Try adjusting your search criteria");
-        subtext.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        subtext.setForeground(TEXT_GRAY);
-        subtext.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        panel.add(icon);
-        panel.add(Box.createVerticalStrut(20));
-        panel.add(text);
-        panel.add(Box.createVerticalStrut(10));
-        panel.add(subtext);
-
-        return panel;
-    }
-
-    private void showModernDetails(AlumniProfile p) {
-        JDialog dialog = new JDialog(this, p.getFullName(), true);
-        dialog.setSize(600, 500);
+        JDialog dialog = new JDialog(this, "Alumni Profile", true);
+        dialog.setSize(520, 420);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout());
 
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(new Color(22, 22, 35));
-        content.setBorder(new EmptyBorder(30, 40, 30, 40));
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        panel.setBackground(CARD);
 
-        // Avatar — use real photo if available, otherwise initials
-        String detailPic = p.getProfilePicturePath();
-        JLabel avatar;
-        if (detailPic != null && !detailPic.isEmpty() && new java.io.File(detailPic).exists()) {
-            avatar = new JLabel(new CircularImageIcon(detailPic, 100));
-        } else {
-            avatar = new JLabel(new AvatarIcon(p.getFullName(), 100, PRIMARY_BLUE));
-        }
-        avatar.setAlignmentX(Component.CENTER_ALIGNMENT);
-        content.add(avatar);
-        content.add(Box.createVerticalStrut(20));
+        panel.add(lbl(safe(profile.getFullName(), fallbackName), new Font("Segoe UI", Font.BOLD, 22), TXT_H));
+        panel.add(vgap(6));
+        panel.add(lbl(safe(profile.getJobRole(), "Not set") + " · " + safe(profile.getCompany(), "Not set"), F_BODY, ACCENT_T));
+        panel.add(vgap(14));
+        panel.add(profileLine("Email", safe(profile.getEmail(), "Not set")));
+        panel.add(vgap(10));
+        panel.add(profileLine("Company", safe(profile.getCompany(), "Not set")));
+        panel.add(vgap(10));
+        panel.add(profileLine("Role", safe(profile.getJobRole(), "Not set")));
+        panel.add(vgap(10));
+        panel.add(profileLine("Graduation Year", profile.getGraduationYear() <= 0 ? "Not set" : String.valueOf(profile.getGraduationYear())));
+        panel.add(vgap(10));
+        panel.add(profileLine("Skills", safe(profile.getSkills(), "Not set")));
+        panel.add(vgap(10));
+        panel.add(profileLine("Bio", safe(profile.getBio(), "No bio yet")));
 
-        // Name
-        JLabel name = new JLabel(p.getFullName());
-        name.setFont(new Font("Segoe UI", Font.BOLD, 26));
-        name.setAlignmentX(Component.CENTER_ALIGNMENT);
-        content.add(name);
-        content.add(Box.createVerticalStrut(10));
+        JButton closeBtn = glowBtn("Close", ACCENT_I);
+        closeBtn.addActionListener(e -> dialog.dispose());
+        JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        bottom.setBorder(new EmptyBorder(10, 20, 20, 20));
+        bottom.setBackground(CARD);
+        bottom.add(closeBtn);
 
-        // Details
-        addDetailRow(content, "📧 Email", p.getEmail());
-        addDetailRow(content, "💼 Company",
-            p.getCompany() != null ? p.getCompany() : "Not specified");
-        addDetailRow(content, "👔 Role",
-            p.getJobRole() != null ? p.getJobRole() : "Not specified");
-        addDetailRow(content, "🎓 Graduation",
-            String.valueOf(p.getGraduationYear()));
-        addDetailRow(content, "💡 Skills",
-            p.getSkills() != null ? p.getSkills() : "Not specified");
-
-        content.add(Box.createVerticalStrut(15));
-
-        // Bio
-        JLabel bioLabel = new JLabel("📝 Bio");
-        bioLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        bioLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(bioLabel);
-        content.add(Box.createVerticalStrut(8));
-
-        JTextArea bio =
-            new JTextArea(p.getBio() != null ? p.getBio() : "No bio provided");
-        bio.setLineWrap(true);
-        bio.setWrapStyleWord(true);
-        bio.setEditable(false);
-        bio.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        bio.setBackground(MAIN_BG);
-        bio.setBorder(new EmptyBorder(15, 15, 15, 15));
-        content.add(bio);
-
-        JScrollPane scrollPane = new JScrollPane(content);
-        scrollPane.setBorder(null);
-        dialog.add(scrollPane);
-
+        dialog.add(panel, BorderLayout.CENTER);
+        dialog.add(bottom, BorderLayout.SOUTH);
         dialog.setVisible(true);
     }
 
-    private void addDetailRow(JPanel parent, String label, String value) {
-        JPanel row = new JPanel(new BorderLayout(10, 0));
-        row.setBackground(new Color(22, 22, 35));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
-        row.setBorder(new EmptyBorder(5, 0, 5, 0));
-
-        JLabel labelComp = new JLabel(label);
-        labelComp.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        labelComp.setPreferredSize(new Dimension(150, 20));
-
-        JLabel valueComp = new JLabel(value);
-        valueComp.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        valueComp.setForeground(TEXT_GRAY);
-
-        row.add(labelComp, BorderLayout.WEST);
-        row.add(valueComp, BorderLayout.CENTER);
-
-        parent.add(row);
-    }
-
-    private void showMessageDialog(AlumniProfile p) {
-        // Open chat conversation window
-        ChatConversationFrame chat = new ChatConversationFrame(
-            currentUserId, currentUsername, p.getUserId(), p.getFullName());
-        chat.setVisible(true);
-    }
-
-    // ==========================================
-    // CIRCULAR IMAGE ICON
-    // ==========================================
-    private static class CircularImageIcon implements Icon {
-        private final BufferedImage circularImage;
-        private final int size;
-
-        public CircularImageIcon(String imagePath, int size) {
-            this.size = size;
-            BufferedImage result = null;
-            try {
-                // Load fully via ImageIO (synchronous, no async issue)
-                BufferedImage raw = ImageIO.read(new java.io.File(imagePath));
-                if (raw != null) {
-                    // Scale to exact size using Graphics2D
-                    BufferedImage scaled =
-                        new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-                    Graphics2D sg = scaled.createGraphics();
-                    sg.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                        RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-                    sg.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                    sg.drawImage(raw, 0, 0, size, size, null);
-                    sg.dispose();
-                    // Clip to circle in a new ARGB image
-                    BufferedImage circular =
-                        new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-                    Graphics2D cg = circular.createGraphics();
-                    cg.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                        RenderingHints.VALUE_ANTIALIAS_ON);
-                    cg.setClip(new java.awt.geom.Ellipse2D.Float(0, 0, size, size));
-                    cg.drawImage(scaled, 0, 0, null);
-                    cg.setClip(null);
-                    // Draw border ring
-                    cg.setColor(new Color(66, 153, 225));
-                    cg.setStroke(new BasicStroke(3f));
-                    cg.drawOval(1, 1, size - 2, size - 2);
-                    cg.dispose();
-                    result = circular;
-                }
-            } catch (IOException e) {
-                System.err.println("CircularImageIcon: could not load " + imagePath + " : " + e.getMessage());
-            }
-            this.circularImage = result;
-        }
-
-        @Override
-        public void paintIcon(Component c, Graphics g, int x, int y) {
-            if (circularImage != null) {
-                g.drawImage(circularImage, x, y, null);
-            } else {
-                // Fallback: grey circle if image failed
+    private JButton glowBtn(String text, Color accent) {
+        JButton b = new JButton(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(200, 210, 220));
-                g2.fillOval(x, y, size, size);
-                g2.setColor(new Color(66, 153, 225));
-                g2.setStroke(new BasicStroke(3f));
-                g2.drawOval(x + 1, y + 1, size - 2, size - 2);
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color base = getModel().isPressed() ? accent.darker() : getModel().isRollover() ? accent.brighter()
+                                                                                                : accent;
+                g2.setColor(base);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                g2.setColor(new Color(255, 255, 255, 20));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight() / 2, 12, 12);
                 g2.dispose();
+                super.paintComponent(g);
             }
-        }
-
-        @Override
-        public int getIconWidth() {
-            return size;
-        }
-        @Override
-        public int getIconHeight() {
-            return size;
-        }
+        };
+        b.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        b.setForeground(Color.WHITE);
+        b.setBorder(new EmptyBorder(8, 20, 8, 20));
+        b.setContentAreaFilled(false);
+        b.setBorderPainted(false);
+        b.setFocusPainted(false);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return b;
     }
 
-    // ==========================================
-    // AVATAR ICON
-    // ==========================================
-    private static class AvatarIcon implements Icon {
-        private final String initials;
-        private final int size;
-        private final Color color;
+    private JScrollPane styledScroll(JComponent c) {
+        JScrollPane sc = new JScrollPane(c);
+        sc.setBorder(null);
+        sc.setOpaque(false);
+        sc.getViewport().setOpaque(false);
+        sc.getVerticalScrollBar().setUnitIncrement(18);
+        sc.getVerticalScrollBar().setUI(thinScrollUI());
+        return sc;
+    }
 
-        public AvatarIcon(String name, int size, Color baseColor) {
-            this.size = size;
-            this.initials = getInitials(name);
-            this.color = baseColor;
-        }
-
-        private String getInitials(String name) {
-            if (name == null || name.isEmpty())
-                return "?";
-            String[] parts = name.split("\\s+");
-            if (parts.length >= 2) {
-                return (parts[0].substring(0, 1) + parts[1].substring(0, 1))
-                    .toUpperCase();
+    private BasicScrollBarUI thinScrollUI() {
+        return new BasicScrollBarUI() {
+            @Override
+            protected void configureScrollBarColors() {
+                thumbColor = new Color(80, 100, 160, 150);
+                trackColor = new Color(0, 0, 0, 0);
             }
-            return name.substring(0, Math.min(2, name.length())).toUpperCase();
-        }
+            @Override
+            protected JButton createDecreaseButton(int o) { return zeroBtn(); }
+            @Override
+            protected JButton createIncreaseButton(int o) { return zeroBtn(); }
+            JButton zeroBtn() {
+                JButton b = new JButton();
+                b.setPreferredSize(new Dimension(0, 0));
+                return b;
+            }
+        };
+    }
 
+    private Color interp(Color a, Color b, float t) {
+        int r = (int) (a.getRed() + (b.getRed() - a.getRed()) * t);
+        int g = (int) (a.getGreen() + (b.getGreen() - a.getGreen()) * t);
+        int bl = (int) (a.getBlue() + (b.getBlue() - a.getBlue()) * t);
+        return new Color(clamp(r), clamp(g), clamp(bl));
+    }
+    private int clamp(int v) { return Math.max(0, Math.min(255, v)); }
+    private String firstName(String full) {
+        if (full == null || full.trim().isEmpty()) return "Member";
+        return full.trim().split("\\s+")[0];
+    }
+
+    private void setPlaceholder(JTextField f, String ph) {
+        f.setText(ph);
+        f.setForeground(TXT_M);
+        f.addFocusListener(new FocusAdapter() {
+            public void focusGained(FocusEvent e) {
+                if (f.getText().equals(ph)) {
+                    f.setText("");
+                    f.setForeground(TXT_H);
+                }
+            }
+            public void focusLost(FocusEvent e) {
+                if (f.getText().isEmpty()) {
+                    f.setText(ph);
+                    f.setForeground(TXT_M);
+                }
+            }
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  AVATAR ICON & MAIN ENTRY
+    // ═══════════════════════════════════════════════════════════
+    static class AvatarIcon implements Icon {
+        String init;
+        int sz;
+        Color col;
+        AvatarIcon(String name, int sz, Color col) {
+            this.sz = sz;
+            this.col = col;
+            if (name == null || name.isEmpty()) {
+                init = "?";
+                return;
+            }
+            String[] p = name.split("\\s+");
+            init = (p.length >= 2 ? ("" + p[0].charAt(0) + p[1].charAt(0)) : name.substring(0, Math.min(2, name.length()))).toUpperCase();
+        }
         @Override
         public void paintIcon(Component c, Graphics g, int x, int y) {
             Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-            // Gradient background
-            GradientPaint gradient =
-                new GradientPaint(x, y, color, x + size, y + size, color.brighter());
-            g2.setPaint(gradient);
-            g2.fillOval(x, y, size, size);
-
-            // Initials
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            GradientPaint gp = new GradientPaint(x, y, col, x + sz, y + sz, col.darker());
+            g2.setPaint(gp);
+            g2.fillOval(x, y, sz, sz);
             g2.setColor(Color.WHITE);
-            g2.setFont(new Font("Segoe UI", Font.BOLD, size / 2));
+            g2.setFont(new Font("Segoe UI", Font.BOLD, sz / 2 - 1));
             FontMetrics fm = g2.getFontMetrics();
-            int textX = x + (size - fm.stringWidth(initials)) / 2;
-            int textY = y + ((size - fm.getHeight()) / 2) + fm.getAscent();
-            g2.drawString(initials, textX, textY);
-
+            g2.drawString(init, x + (sz - fm.stringWidth(init)) / 2, y + (sz - fm.getHeight()) / 2 + fm.getAscent());
             g2.dispose();
         }
-
         @Override
-        public int getIconWidth() {
-            return size;
-        }
-
+        public int getIconWidth() { return sz; }
         @Override
-        public int getIconHeight() {
-            return size;
-        }
+        public int getIconHeight() { return sz; }
     }
 
-    // ==========================================
-    // MAIN METHOD - FOR TESTING ONLY
-    // ==========================================
     public static void main(String[] args) {
         try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) {
-            e.printStackTrace();
+            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+            UIManager.put("ScrollBar.width", 6);
+        } catch (Exception ignored) {
         }
 
-        SwingUtilities.invokeLater(() -> {
-            // Show login frame instead of directly opening dashboard
-            new LoginFrame().setVisible(true);
-        });
+        UIManager.put("Panel.background", BG_DEEP);
+        UIManager.put("ScrollPane.background", BG_DEEP);
+        UIManager.put("Viewport.background", BG_DEEP);
+
+        SwingUtilities.invokeLater(() -> new ModernDashboardUI("Md. Rahul Islam").setVisible(true));
     }
 }
